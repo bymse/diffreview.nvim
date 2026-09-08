@@ -30,6 +30,16 @@ Key modules:
 
 **Controller:** handle commands from nvim ui and pass them between model and ui
 
+**Layout:**
+1. diffreview/init.lua: setup func + funcs exposed as part of public api
+2. diffreview/commands.lua: user commands
+3. diffreview/autocmds.lua: events registration 
+4. diffreview/review.lua: domaim orchestration
+5. diffreview/storage.lua: persistence
+6. diffreview/diffs: collection of diffs, diff loading, refresh, ...
+7. diffreview/ui: interactions with nvim ui
+8. diffreview/comments: operations on comments
+
 ## Testing 
 
 Model: inegration tests for all except for comments publishing to remote. Integration tests should create real temp git repository and prepare required data there 
