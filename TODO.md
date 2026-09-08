@@ -1,0 +1,5 @@
+- [x] Git interactions: load diffs, load repo info 
+- [x] Dislay files as quickfix list 
+- [ ] Open files as diff from quickfix list
+- [ ] Start review: load review state, show files in quickfix list
+- [ ] Open files from the quickfix
