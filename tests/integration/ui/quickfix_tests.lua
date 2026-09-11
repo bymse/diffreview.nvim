@@ -6,13 +6,13 @@ local function reset_quickfix()
   vim.fn.setqflist({}, 'f')
 end
 
----@param relative_path string
+---@param display_path string
 ---@param viewed boolean
 ---@return ChangedFileViewModel
-local function changed_file(relative_path, viewed)
+local function changed_file(display_path, viewed)
   return {
-    absolute_path = vim.fs.joinpath(vim.fn.tempname(), relative_path),
-    relative_path = relative_path,
+    id = display_path,
+    display_path = display_path,
     viewed = viewed,
   }
 end
@@ -32,8 +32,8 @@ M.show_review_files_should_display_viewed_and_unviewed_files_when_creating_list 
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
-      '[ ] ' .. unviewed.relative_path,
-      '[x] ' .. viewed.relative_path,
+      '[ ] ' .. unviewed.display_path,
+      '[x] ' .. viewed.display_path,
     }),
     'expected viewed and unviewed files to be displayed'
   )
@@ -50,13 +50,24 @@ M.show_review_files_should_order_unviewed_before_viewed_when_states_are_mixed = 
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
-      '[ ] ' .. unviewed_first.relative_path,
-      '[ ] ' .. unviewed_second.relative_path,
-      '[x] ' .. viewed_first.relative_path,
-      '[x] ' .. viewed_second.relative_path,
+      '[ ] ' .. unviewed_first.display_path,
+      '[ ] ' .. unviewed_second.display_path,
+      '[x] ' .. viewed_first.display_path,
+      '[x] ' .. viewed_second.display_path,
     }),
     'expected unviewed files before viewed files while preserving their order'
   )
+end
+
+M.show_review_files_should_store_file_id_without_file_location = function()
+  reset_quickfix()
+  local deleted = changed_file('deleted.lua', false)
+
+  ui.show_review_files(nil, { deleted })
+
+  local item = vim.fn.getqflist({ items = 1 }).items[1]
+  assert(item.bufnr == 0, 'expected entry not to reference a file buffer')
+  assert(item.user_data.file_id == deleted.id, 'expected entry to reference review state by file ID')
 end
 
 M.show_review_files_should_update_same_list_when_other_lists_exist = function()
@@ -74,7 +85,7 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
-      '[x] ' .. replacement.relative_path,
+      '[x] ' .. replacement.display_path,
     }),
     'expected the updated review files to be displayed'
   )
@@ -82,7 +93,7 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
   vim.cmd('silent! colder')
   assert(
     vim.deep_equal(get_displayed_lines(), {
-      '[x] ' .. replacement.relative_path,
+      '[x] ' .. replacement.display_path,
     }),
     'expected the existing review list to contain the updated display'
   )

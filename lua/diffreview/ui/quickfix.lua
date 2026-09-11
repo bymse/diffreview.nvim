@@ -31,14 +31,13 @@ local function create_quickfix_entries(files)
 
   for _, file in ipairs(files) do
     local entry = {
-      filename = file.absolute_path,
-      module = file.relative_path,
+      module = file.display_path,
       lnum = 1,
       col = 1,
       text = file.viewed and '[x]' or '[ ]',
       valid = 1,
       user_data = {
-        relative_path = file.relative_path,
+        file_id = file.id,
       },
     }
 
