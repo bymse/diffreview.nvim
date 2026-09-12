@@ -93,6 +93,46 @@ M.diff_should_return_all_changes_since_from_commit_when_to_is_nil = function()
   end)
 end
 
+M.diff_should_return_text_line_counts_when_file_changes = function()
+  git_repo.with_repo(function(test_repo)
+    test_repo:write_file('tracked.txt', { 'one', 'two', 'three' })
+    test_repo:add('tracked.txt')
+    test_repo:commit('Initial commit')
+    local initial_sha = test_repo:current_sha()
+
+    test_repo:write_file('tracked.txt', { 'one', 'updated', 'three', 'four' })
+
+    local parsed_diff = find_diff(diff(git.get_repo(test_repo.cwd), initial_sha, nil), 'tracked.txt')
+    assert(parsed_diff ~= nil, 'expected changed file diff')
+    assert(parsed_diff.added_lines == 2, 'expected two added lines')
+    assert(parsed_diff.removed_lines == 1, 'expected one removed line')
+    assert(not parsed_diff.binary, 'expected text file')
+  end)
+end
+
+M.diff_should_return_binary_marker_without_line_counts_when_binary_file_changes = function()
+  git_repo.with_repo(function(test_repo)
+    local initial_write = vim
+      .system({ 'sh', '-c', 'printf "\\000\\001\\002" > image.bin' }, { cwd = test_repo.cwd })
+      :wait()
+    assert(initial_write.code == 0, 'failed to write binary file: ' .. initial_write.stderr)
+    test_repo:add('image.bin')
+    test_repo:commit('Initial commit')
+    local initial_sha = test_repo:current_sha()
+
+    local modified_write = vim
+      .system({ 'sh', '-c', 'printf "\\000\\003\\004" > image.bin' }, { cwd = test_repo.cwd })
+      :wait()
+    assert(modified_write.code == 0, 'failed to write binary file: ' .. modified_write.stderr)
+
+    local parsed_diff = find_diff(diff(git.get_repo(test_repo.cwd), initial_sha, nil), 'image.bin')
+    assert(parsed_diff ~= nil, 'expected changed file diff')
+    assert(parsed_diff.added_lines == nil, 'expected binary file to have no added line count')
+    assert(parsed_diff.removed_lines == nil, 'expected binary file to have no removed line count')
+    assert(parsed_diff.binary, 'expected binary file')
+  end)
+end
+
 M.diff_should_include_staged_and_unstaged_changes_when_only_from_is_provided = function()
   git_repo.with_repo(function(test_repo)
     test_repo:write_file('unstaged.txt', { 'initial content' })

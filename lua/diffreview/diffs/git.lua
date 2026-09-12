@@ -84,7 +84,7 @@ function GitRepo:diff(from_commit_oid, to_commit_oid)
     error('invalid to commit object ID: ' .. to_commit_oid)
   end
 
-  local cmd = { 'git', 'diff', '--raw', '-z', '-M', '-C' }
+  local cmd = { 'git', 'diff', '--raw', '--numstat', '-z', '-M', '-C' }
   if from_commit_oid ~= nil then
     table.insert(cmd, from_commit_oid)
   end

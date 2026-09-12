@@ -10,6 +10,9 @@ local diff_status = require('diffreview.diffs.status')
 ---@field similarity_score string|nil
 ---@field current_path string
 ---@field old_path string|nil
+---@field added_lines integer|nil
+---@field removed_lines integer|nil
+---@field binary boolean
 
 local M = {}
 local colon_byte = string.byte(':')
@@ -96,6 +99,86 @@ local function validate_diff(diff)
   end
 end
 
+---@param raw_out string
+---@param start integer
+---@return string, integer
+local function read_nul_section(raw_out, start)
+  local finish = raw_out:find('\0', start, true)
+  if finish == nil then
+    error('git diff output expected to end with NUL')
+  end
+
+  return raw_out:sub(start, finish - 1), finish + 1
+end
+
+---@param raw_out string
+---@param start integer
+---@return GitDiff, integer
+local function parse_raw_diff(raw_out, start)
+  local raw_meta, next_start = read_nul_section(raw_out, start + 1)
+  local diff = parse_diff_meta(raw_meta)
+  local first_path
+  first_path, next_start = read_nul_section(raw_out, next_start)
+
+  if diff.status == diff_status.copied or diff.status == diff_status.renamed then
+    diff.old_path = first_path
+    diff.current_path, next_start = read_nul_section(raw_out, next_start)
+  else
+    diff.current_path = first_path
+  end
+
+  validate_diff(diff)
+  return diff, next_start
+end
+
+---@param raw_numstat string
+---@return integer|nil, integer|nil, boolean, string
+local function parse_numstat_counts(raw_numstat)
+  local added, removed, path = raw_numstat:match('^([^\t]+)\t([^\t]+)\t(.*)$')
+  if added == nil or removed == nil or path == nil then
+    error('invalid git diff numstat metadata: ' .. raw_numstat)
+  end
+
+  if added == '-' and removed == '-' then
+    return nil, nil, true, path
+  end
+
+  if not added:match('^%d+$') or not removed:match('^%d+$') then
+    error('invalid git diff numstat line counts: ' .. raw_numstat)
+  end
+
+  return tonumber(added), tonumber(removed), false, path
+end
+
+---@param diff GitDiff
+---@param raw_out string
+---@param start integer
+---@return integer
+local function parse_numstat_diff(diff, raw_out, start)
+  local raw_numstat, next_start = read_nul_section(raw_out, start)
+  local added_lines, removed_lines, binary, first_path = parse_numstat_counts(raw_numstat)
+
+  if diff.status == diff_status.copied or diff.status == diff_status.renamed then
+    if first_path ~= '' then
+      error('git diff numstat rename or copy record expected an empty path')
+    end
+
+    first_path, next_start = read_nul_section(raw_out, next_start)
+    local current_path
+    current_path, next_start = read_nul_section(raw_out, next_start)
+    if first_path ~= diff.old_path or current_path ~= diff.current_path then
+      error('git diff raw and numstat paths are misaligned')
+    end
+  elseif first_path == '' or first_path ~= diff.current_path then
+    error('git diff raw and numstat paths are misaligned')
+  end
+
+  diff.added_lines = added_lines
+  diff.removed_lines = removed_lines
+  diff.binary = binary
+  return next_start
+end
+
 ---@return GitDiff[]
 ---@param raw_out string
 function M.parse_diff_output(raw_out)
@@ -107,60 +190,20 @@ function M.parse_diff_output(raw_out)
     error('git diff output expected to start with ":"')
   end
 
-  if raw_out:byte(#raw_out) ~= 0 then
-    error('git diff output expected to end with NUL')
-  end
-
-  local section_start = 2
-  local state = 'meta'
   local diffs = {}
-
-  ---@type GitDiff|nil
-  local current_diff = nil
-  for i = section_start, #raw_out do
-    local byte = raw_out:byte(i)
-
-    if byte ~= 0 then
-      goto continue
-    end
-
-    if state == 'meta' then
-      current_diff = parse_diff_meta(raw_out:sub(section_start, i - 1))
-      section_start = i + 1
-      state = 'path'
-    elseif current_diff ~= nil and state == 'path' then
-      local expect_two_paths = current_diff.status == diff_status.copied or current_diff.status == diff_status.renamed
-      local path = raw_out:sub(section_start, i - 1)
-      if expect_two_paths then
-        current_diff.old_path = path
-        section_start = i + 1
-        state = 'second_path'
-      else
-        current_diff.current_path = path
-        section_start = i + 2
-        state = 'meta'
-      end
-    elseif current_diff ~= nil and state == 'second_path' then
-      current_diff.current_path = raw_out:sub(section_start, i - 1)
-      section_start = i + 2
-      state = 'meta'
-    end
-
-    if state == 'meta' and current_diff ~= nil then
-      validate_diff(current_diff)
-      table.insert(diffs, current_diff)
-      current_diff = nil
-
-      if i < #raw_out and raw_out:byte(i + 1) ~= colon_byte then
-        error('git diff record expected to start with ":"')
-      end
-    end
-
-    ::continue::
+  local position = 1
+  while raw_out:byte(position) == colon_byte do
+    local diff
+    diff, position = parse_raw_diff(raw_out, position)
+    table.insert(diffs, diff)
   end
 
-  if current_diff ~= nil then
-    validate_diff(current_diff)
+  for _, diff in ipairs(diffs) do
+    position = parse_numstat_diff(diff, raw_out, position)
+  end
+
+  if position <= #raw_out then
+    error('git diff output contains trailing data')
   end
 
   return diffs

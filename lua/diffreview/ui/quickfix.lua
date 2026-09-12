@@ -17,7 +17,7 @@ local function format_quickfix_entries(info)
 
   for index = info.start_idx, info.end_idx do
     local item = items[index]
-    table.insert(lines, item.text .. ' ' .. item.module)
+    table.insert(lines, item.text)
   end
 
   return lines
@@ -31,10 +31,14 @@ local function create_quickfix_entries(files)
 
   for _, file in ipairs(files) do
     local entry = {
-      module = file.display_path,
       lnum = 1,
       col = 1,
-      text = file.viewed and '[x]' or '[ ]',
+      text = ('%s -%d/+%d %s'):format(
+        file.viewed and '[x]' or '[ ]',
+        file.removed_lines,
+        file.added_lines,
+        file.display_path
+      ),
       valid = 1,
       user_data = {
         file_id = file.id,

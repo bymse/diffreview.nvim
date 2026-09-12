@@ -4,6 +4,8 @@ local M = {}
 ---@class ChangedFileViewModel
 ---@field id string
 ---@field display_path string
+---@field added_lines integer
+---@field removed_lines integer
 ---@field viewed boolean
 
 ---@class DiffTextContent

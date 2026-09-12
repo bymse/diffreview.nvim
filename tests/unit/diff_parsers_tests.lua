@@ -11,13 +11,25 @@ local function assert_ls_files_parse_fails(raw_out)
   assert(not success, 'expected malformed ls-files output to raise an error')
 end
 
+---@param raw_output string
+---@param numstat_output string
+---@return string
+local function diff_output(raw_output, numstat_output)
+  return raw_output .. numstat_output
+end
+
 M.parse_diff_output_should_return_empty_list_for_empty_output = function()
   local diffs = parsers.parse_diff_output('')
   assert(#diffs == 0, 'expected no diffs')
 end
 
 M.parse_diff_output_should_parse_single_file = function()
-  local diff = parsers.parse_diff_output(':000000 100644 0000000 1da2a87 A\0lua/diffreview/diffs/git.lua\0')[1]
+  local diff = parsers.parse_diff_output(
+    diff_output(
+      ':000000 100644 0000000 1da2a87 A\0lua/diffreview/diffs/git.lua\0',
+      '42\t0\tlua/diffreview/diffs/git.lua\0'
+    )
+  )[1]
   assert(diff.new_mode == '100644', 'expected new_mode to be 100644')
   assert(diff.old_mode == '000000', 'expected old_mode to be 000000')
   assert(diff.old_oid == '0000000', 'expected old_oid to be 0000000')
@@ -28,10 +40,15 @@ M.parse_diff_output_should_parse_single_file = function()
   )
   assert(diff.old_path == nil, 'expected old_path to be nil')
   assert(diff.status == 'A', 'expected status to be A')
+  assert(diff.added_lines == 42, 'expected 42 added lines')
+  assert(diff.removed_lines == 0, 'expected no removed lines')
+  assert(not diff.binary, 'expected text file')
 end
 
 M.parse_diff_output_should_parse_rename = function()
-  local diff = parsers.parse_diff_output(':100644 100644 095d886 095d886 R100\0ARCH.md\0TEMP_ARCH.md\0')[1]
+  local diff = parsers.parse_diff_output(
+    diff_output(':100644 100644 095d886 095d886 R100\0ARCH.md\0TEMP_ARCH.md\0', '0\t0\t\0ARCH.md\0TEMP_ARCH.md\0')
+  )[1]
   assert(diff.new_mode == '100644', 'expected new_mode to be 100644')
   assert(diff.old_mode == '100644', 'expected old_mode to be 100644')
   assert(diff.old_oid == '095d886', 'expected old_oid to be 095d886')
@@ -43,7 +60,9 @@ M.parse_diff_output_should_parse_rename = function()
 end
 
 M.parse_diff_output_should_parse_path_containing_colon = function()
-  local diffs = parsers.parse_diff_output(':100644 100644 381ca90 0000000 M\0lua/diffreview:parser.lua\0')
+  local diffs = parsers.parse_diff_output(
+    diff_output(':100644 100644 381ca90 0000000 M\0lua/diffreview:parser.lua\0', '1\t1\tlua/diffreview:parser.lua\0')
+  )
   assert(#diffs == 1, 'expected one diff')
 
   local diff = diffs[1]
@@ -52,7 +71,10 @@ end
 
 M.parse_diff_output_should_parse_multiple_files = function()
   local diffs = parsers.parse_diff_output(
-    ':100644 100644 095d886 095d886 R100\0ARCH.md\0TEMP_ARCH.md\0:100644 100644 381ca90 0000000 M\0justfile\0:100644 100644 e69de29 0000000 M\0lua/diffreview/diffs/git.lua\0'
+    diff_output(
+      ':100644 100644 095d886 095d886 R100\0ARCH.md\0TEMP_ARCH.md\0:100644 100644 381ca90 0000000 M\0justfile\0:100644 100644 e69de29 0000000 M\0lua/diffreview/diffs/git.lua\0',
+      '0\t0\t\0ARCH.md\0TEMP_ARCH.md\0' .. '1\t1\tjustfile\0' .. '2\t3\tlua/diffreview/diffs/git.lua\0'
+    )
   )
   assert(#diffs == 3, 'expected three diffs')
 
@@ -110,6 +132,23 @@ end
 
 M.parse_diff_output_should_error_for_malformed_object_id = function()
   assert_parse_fails(':100644 100644 invalid 1234567 M\0one.lua\0')
+end
+
+M.parse_diff_output_should_parse_binary_numstat = function()
+  local diff =
+    parsers.parse_diff_output(diff_output(':100644 100644 abcdef0 1234567 M\0image.bin\0', '-\t-\timage.bin\0'))[1]
+
+  assert(diff.added_lines == nil, 'expected binary file to have no added line count')
+  assert(diff.removed_lines == nil, 'expected binary file to have no removed line count')
+  assert(diff.binary, 'expected binary file')
+end
+
+M.parse_diff_output_should_error_when_numstat_path_does_not_match_raw_path = function()
+  assert_parse_fails(diff_output(':100644 100644 abcdef0 1234567 M\0one.lua\0', '1\t1\ttwo.lua\0'))
+end
+
+M.parse_diff_output_should_error_when_numstat_records_are_missing = function()
+  assert_parse_fails(':100644 100644 abcdef0 1234567 M\0one.lua\0')
 end
 
 M.parse_ls_files_output_should_return_empty_list_for_empty_output = function()
