@@ -59,6 +59,20 @@ local function run_optional_trimmed(cmd, cwd)
   return output
 end
 
+---@param raw_out string
+---@return string[]
+local function parse_text_output(raw_out)
+  if raw_out == '' then
+    return {}
+  end
+
+  if raw_out:sub(-1) == '\n' then
+    raw_out = raw_out:sub(1, -2)
+  end
+
+  return vim.split(raw_out, '\n', { plain = true })
+end
+
 ---@param expression string
 ---@return GitResult, string|nil
 function GitRepo:rev_parse(expression)
@@ -94,6 +108,16 @@ function GitRepo:diff(from_commit_oid, to_commit_oid)
   table.insert(cmd, '--')
 
   return run_parsed(cmd, self.dir, parsers.parse_diff_output, false)
+end
+
+---@param oid string
+---@return GitResult, string[]|nil
+function GitRepo:load_text(oid)
+  if not oid:match('^%x+$') then
+    error('invalid object ID: ' .. oid)
+  end
+
+  return run_parsed({ 'git', 'cat-file', 'blob', oid }, self.dir, parse_text_output, true)
 end
 
 ---@return GitResult, string[]|nil
