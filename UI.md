@@ -21,23 +21,43 @@ Additional mode:
 - Files and dirs can be marked as viewed from the oil buffer 
 
 ## Changes view
-"diff" mode opens a selected review file using the configured window layout. It uses real file buffers when a usable path exists and scratch buffers for content loaded from Git. A current side supplied by another Git revision uses `current_content` when no usable working-tree path exists.
+"diff" mode opens a selected review file using the configured window layout. It uses real file buffers when available and scratch buffers for content loaded from Git.
 
 ### Diff mode cases
 
-- Modified text file: Required arguments are `old_path`, `new_path`, `old_content`, and either `current_path` or `current_content`. Display the old and current versions in the configured two-window layout and enable `diffthis` in both windows. If the mode also changed, additionally require `old_mode` and `new_mode` and show the mode transition in the current window's winbar.
-- Added or untracked text file: Required arguments are `new_path` and `current_path` when a usable file exists, otherwise `current_content`. Display only the current buffer, show `Added file` in its winbar, and highlight every line with `DiffAdd` extmarks.
-- Deleted text file: Required arguments are `old_path` and `old_content`. Display the old content in one read-only scratch buffer, show `Deleted file` in its winbar, and highlight every line with `DiffDelete` extmarks.
-- Renamed text file: Required arguments are `old_path`, `new_path`, `old_content`, and either `current_path` or `current_content`. If content is unchanged, display only the current buffer with `Moved from <old_path>` in its winbar. If content changed, display the configured two-window diff and show the move in the current window's winbar.
-- Copied text file: Required arguments are source `old_path`, destination `new_path`, `old_content`, and either `current_path` or `current_content`. If content is unchanged, display only the current buffer with `Copied from <old_path>` in its winbar. If content changed, display the configured two-window diff and show the copy in the current window's winbar.
-- Mode-only change: Required arguments are the file path, `old_mode`, and `new_mode`. Display one read-only information buffer containing the mode transition and explanatory text describing the old and new modes.
-- Type change: Required arguments are the file path, `old_mode`, `new_mode`, `old_type`, and `new_type`. Display one read-only information buffer explaining the old and new file types and modes without a text diff.
-- Binary file: Required arguments are the change status, `old_path`, `new_path`, and available old and new object IDs or sizes. Display one read-only information buffer containing the paths, status, and available object or size information.
-- Unmerged file: Required arguments are the path, available Git stage object IDs, and the current working-tree path. Display the current conflict buffer with its conflict markers and show `Unmerged file` in its winbar.
-- Content load error: Required arguments are the path, attempted change status, and error message. Display one read-only information buffer containing the path, attempted operation, and error message.
+- Modified text file: Display the old and current versions in the configured two-window layout and enable `diffthis` in both windows. If the mode also changed, show the mode transition in the current window's winbar.
+- Added or untracked text file: Display only the current buffer, show `Added file` in its winbar, and highlight every line with `DiffAdd` extmarks.
+- Deleted text file: Display the old content in one read-only scratch buffer, show `Deleted file` in its winbar, and highlight every line with `DiffDelete` extmarks.
+- Renamed text file: If content is unchanged, display only the current buffer with `Moved from <old_path>` in its winbar. If content changed, display the configured two-window diff and show the move in the current window's winbar.
+- Copied text file: If content is unchanged, display only the current buffer with `Copied from <old_path>` in its winbar. If content changed, display the configured two-window diff and show the copy in the current window's winbar.
+- Mode-only change: Display one read-only information buffer containing the mode transition and explanatory text describing the old and new modes.
+- Type change: Display one read-only information buffer explaining the old and new file types and modes without a text diff.
+- Binary file: Display one read-only information buffer containing the paths, status, and available object or size information.
+- Unmerged file: Display the current conflict buffer with its conflict markers and show `Unmerged file` in its winbar.
+- Content load error: Display one read-only information buffer containing the path, attempted operation, and error message.
 
-"inline" mode:
-files are shown as normal buffers with normal navigation. Status line for added/deleted/moved files should be present. Changed lines should be highlighted/marked with extmarks.
+"inline" mode displays a selected review file in one window with normal buffer navigation. It uses a real file buffer when a usable path exists and a scratch buffer for content loaded from Git. The UI calculates text hunks from the old and current versions; no parsed hunk input is required.
+
+### Inline mode cases
+
+- Modified text file: Display the current buffer and mark added and changed lines with sign-column markers and `DiffAdd` or `DiffChange` line highlights. Mark each deleted hunk with a `DiffDelete` sign at the nearest surviving line. An explicit preview action temporarily shows that hunk's deleted old lines as virtual lines.
+- Added or untracked text file: Display the current buffer, show `Added file` in its winbar, and place an added sign on every line without full-line highlights.
+- Deleted text file: Display the old content in one read-only buffer, show `Deleted file` in its winbar, and place a deletion sign on every line without full-line highlights.
+- Renamed text file: Display the current buffer and show `Moved from <old_path>` in its winbar. If content changed, use the same signs, line highlights, deleted-hunk markers, and temporary deletion previews as a modified text file.
+- Copied text file: Display the current buffer and show `Copied from <old_path>` in its winbar. If content changed, use the same signs, line highlights, deleted-hunk markers, and temporary deletion previews as a modified text file.
+- Mode-only change: Display the current buffer, explain the mode transition in its winbar, and add no line decorations.
+- Text and mode change: Display the normal modified-file decorations and temporary deletion previews together with the explained mode transition in the winbar.
+- Type change: Display one read-only information buffer explaining the old and current types and modes without inline content decorations.
+- Binary file: Display one read-only information buffer containing the operation, paths, and available object or size information.
+- Unmerged file: Display the current working-tree buffer with its conflict markers and show `Unmerged file` in its winbar without additional conflict-region decorations.
+- Content load error: Display one read-only information buffer containing the path, attempted operation, and error message.
+
+## Project navigation
+
+- Normal project navigation, including LSP jumps, file commands, quickfix, and external pickers, remains available during a review.
+- Entering a changed file automatically displays it in the selected review mode. Unchanged files open normally without review decorations.
+- Diff mode keeps focus on the current file and updates or closes its old-version companion as navigation moves between files.
+- Deleted files have no working-tree path and can only be opened from the review file list.
 
 ## Comments 
 - Comments are shown as virtual text 
