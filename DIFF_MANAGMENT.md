@@ -46,3 +46,9 @@ Hints from requirements:
   1.2. state enum: modified, added, deleted, file mode changed, copy, rename, type change (symlink related), unmerged, error
   1.3. opaque identifier to fetch content for old version
 2. Get content for old version using identifier from 1.3
+
+### File identity
+
+- Use `stored:<old-path>` for files that existed in the comparison baseline. Modified, deleted, renamed, and type-changed files retain this identity even when their current path changes.
+- Use `new:<new-path>` for files introduced after the baseline, including added, copied, and untracked files.
+- A file ID identifies an entry across review state and UI refreshes. It is separate from an object ID, which identifies content and is used to load an old version.
