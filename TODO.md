@@ -1,5 +1,12 @@
 - [x] Git interactions: load diffs, load repo info 
 - [x] Dislay files as quickfix list 
-- [ ] Open files as diff from quickfix list
+- [ ] Open changed files
+  - [ ] Split the current tab into two windows according to layout.
+  - [ ] Create a scratch buffer containing the old Git content.
+  - [ ] For the new side, open the real file buffer when available; use a scratch buffer only when necessary.
+  - [ ] Assign one buffer to each window.
+  - [ ] Enable diffthis in both windows. 
+  - [ ] Hanlde layout changes 
 - [ ] Start review: load review state, show files in quickfix list
 - [ ] Open files from the quickfix
+- [ ] Cleanup review scratch buffers on close/review quit
