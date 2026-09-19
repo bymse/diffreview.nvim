@@ -60,11 +60,19 @@ function TestGitRepo:branch(name)
   self:run_git({ 'branch', name })
 end
 
----@param run fun(repo: TestGitRepo)
----@return nil
-function M.with_repo(run)
-  local cwd = vim.fn.tempname()
-  assert(vim.fn.mkdir(cwd, 'p') == 1, 'failed to create temporary Git repository directory')
+---@param cwd string
+---@return TestGitRepo
+function M.get_repo(cwd)
+  return setmetatable({ cwd = cwd }, TestGitRepo)
+end
+
+---@param cwd string
+---@return TestGitRepo
+function M.create_repo(cwd)
+  local directory_exists = vim.fn.isdirectory(cwd) == 1
+  if not directory_exists then
+    assert(vim.fn.mkdir(cwd, 'p') == 1, 'failed to create Git repository directory')
+  end
 
   local init_result = vim
     .system({ 'git', 'init', '--quiet', '--object-format=sha1' }, {
@@ -74,11 +82,20 @@ function M.with_repo(run)
     :wait()
 
   if init_result.code ~= 0 then
-    vim.fn.delete(cwd, 'rf')
-    error('failed to initialize temporary Git repository: ' .. init_result.stderr)
+    if not directory_exists then
+      vim.fn.delete(cwd, 'rf')
+    end
+    error('failed to initialize Git repository: ' .. init_result.stderr)
   end
 
-  local repo = setmetatable({ cwd = cwd }, TestGitRepo)
+  return M.get_repo(cwd)
+end
+
+---@param run fun(repo: TestGitRepo)
+---@return nil
+function M.with_repo(run)
+  local cwd = vim.fn.tempname()
+  local repo = M.create_repo(cwd)
   local success, test_error = xpcall(function()
     run(repo)
   end, debug.traceback)

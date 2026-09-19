@@ -23,11 +23,23 @@ lint:
     chmod +x "$appimage"
     APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --headless --clean --noplugin -n -i NONE -u NONE -l scripts/lint.lua
 
+sandbox name="":
+    #!/usr/bin/env sh
+    set -eu
+    repo_root=$(pwd -P)
+    appimage="$repo_root/.artifacts/nvim-linux-x86_64.appimage"
+    if [ ! -f "$appimage" ]; then
+      printf '%s\n' "Neovim AppImage is missing: run 'just bootstrap'" >&2
+      exit 1
+    fi
+    chmod +x "$appimage"
+    DIFFREVIEW_SANDBOX_NAME={{ quote(name) }} APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" -n -i NONE -u "$repo_root/sandbox/init.lua"
+
 format:
-    stylua lua plugin scripts tests
+    stylua lua plugin sandbox scripts tests
 
 format-check:
-    stylua --check lua plugin scripts tests
+    stylua --check lua plugin sandbox scripts tests
 
 [private]
 run-test category test_name="":
