@@ -21,6 +21,8 @@ Additional mode:
 - Files and dirs can be marked as viewed from the oil buffer 
 
 ## Changes view
+Review views run in a dedicated tabpage owned by the active session. The tabpage uses plugin-owned windows while real file buffers remain user-owned.
+
 "diff" mode opens a selected review file using the configured window layout. It uses real file buffers when available and scratch buffers for content loaded from Git.
 
 ### Diff mode cases
@@ -54,7 +56,7 @@ Additional mode:
 
 ## Project navigation
 
-- Normal project navigation, including LSP jumps, file commands, quickfix, and external pickers, remains available during a review.
+- Normal project navigation, including jumps, file commands, quickfix, and external pickers, remains available during a review.
 - Entering a changed file automatically displays it in the selected review mode. Unchanged files open normally without review decorations.
 - Diff mode keeps focus on the current file and updates or closes its old-version companion as navigation moves between files.
 - Deleted files have no working-tree path and can only be opened from the review file list.
