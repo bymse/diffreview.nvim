@@ -1,4 +1,4 @@
 ---@alias ViewLayout 'horizontal'|'vertical'
----@class Config 
+---@class Config
 ---@field layout ViewLayout
 ---@field view 'side_by_side'|'inline'

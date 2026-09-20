@@ -5,21 +5,31 @@
 ---@field removed_lines integer
 ---@field viewed boolean
 
----@class DiffTextContent
+local M = {}
+
+---@class DiffPathTextContent
 ---@field kind 'text'
----@field path string
----@field content string|nil
+---@field source 'path'
+---@field absolute_path string
+
+---@class DiffSnapshotTextContent
+---@field kind 'text'
+---@field source 'snapshot'
+---@field lines string[]
+---@field endofline boolean
+---@field fileformat 'unix'|'dos'|'mac'
+---@field filetype_path string
 
 ---@class DiffBinaryContent
 ---@field kind 'binary'
 ---@field oid string|nil
 ---@field size integer|nil
 
----@alias DiffFileContent DiffTextContent|DiffBinaryContent
+---@alias DiffFileContent DiffPathTextContent|DiffSnapshotTextContent|DiffBinaryContent
 
 ---@class DiffFileVersion
----@field path string
----@field mode string
+---@field display_path string
+---@field mode DiffFileMode
 ---@field content DiffFileContent
 
 ---@class AddedDiff
@@ -35,21 +45,18 @@
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
----@field mode_changed boolean
 
 ---@class RenamedDiff
 ---@field operation 'renamed'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
----@field mode_changed boolean
 
 ---@class CopiedDiff
 ---@field operation 'copied'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
----@field mode_changed boolean
 
 ---@class TypeChangedDiff
 ---@field operation 'type_changed'
@@ -69,3 +76,5 @@
 ---@field message string
 
 ---@alias DiffViewModel AddedDiff|DeletedDiff|ModifiedDiff|RenamedDiff|CopiedDiff|TypeChangedDiff|UnmergedDiff|ErrorDiff
+
+return M

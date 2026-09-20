@@ -1,4 +1,4 @@
-local file_mode = require('diffreview.diffs.file_mode')
+local file_mode = require('diffreview.file_mode')
 local diff_status = require('diffreview.diffs.status')
 
 ---@class GitDiff
