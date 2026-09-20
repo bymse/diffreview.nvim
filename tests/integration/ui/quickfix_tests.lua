@@ -27,10 +27,11 @@ end
 
 M.show_review_files_should_display_viewed_and_unviewed_files_when_creating_list = function()
   reset_quickfix()
+  local review_ui = ui.get_ui()
   local unviewed = changed_file('path/relative', false)
   local viewed = changed_file('viewed/path/relative', true)
 
-  ui.show_review_files(nil, { unviewed, viewed })
+  review_ui:show_review_files(nil, { unviewed, viewed })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
@@ -43,12 +44,13 @@ end
 
 M.show_review_files_should_order_unviewed_before_viewed_when_states_are_mixed = function()
   reset_quickfix()
+  local review_ui = ui.get_ui()
   local viewed_first = changed_file('viewed-first.lua', true)
   local unviewed_first = changed_file('unviewed-first.lua', false)
   local viewed_second = changed_file('viewed-second.lua', true)
   local unviewed_second = changed_file('unviewed-second.lua', false)
 
-  ui.show_review_files(nil, { viewed_first, unviewed_first, viewed_second, unviewed_second })
+  review_ui:show_review_files(nil, { viewed_first, unviewed_first, viewed_second, unviewed_second })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
@@ -63,9 +65,10 @@ end
 
 M.show_review_files_should_store_file_id_without_file_location = function()
   reset_quickfix()
+  local review_ui = ui.get_ui()
   local deleted = changed_file('deleted.lua', false)
 
-  ui.show_review_files(nil, { deleted })
+  review_ui:show_review_files(nil, { deleted })
 
   local item = vim.fn.getqflist({ items = 1 }).items[1]
   assert(item.bufnr == 0, 'expected entry not to reference a file buffer')
@@ -75,8 +78,9 @@ end
 
 M.show_review_files_should_update_same_list_when_other_lists_exist = function()
   reset_quickfix()
+  local review_ui = ui.get_ui()
   local original = changed_file('original.lua', false)
-  local id = ui.show_review_files(nil, { original })
+  local id = review_ui:show_review_files(nil, { original })
   vim.fn.setqflist({}, ' ', {
     nr = '$',
     title = 'Unrelated list',
@@ -84,7 +88,7 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
   })
   local replacement = changed_file('replacement.lua', true)
 
-  ui.show_review_files(id, { replacement })
+  review_ui:show_review_files(id, { replacement })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
