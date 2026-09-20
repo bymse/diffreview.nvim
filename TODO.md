@@ -7,7 +7,7 @@
   - [x] Assign one buffer to each window.
   - [x] Enable diffthis in both windows.
   - [x] Handle layout changes
-  - [ ] Dispose ui state
+  - [x] Dispose ui state
 - [ ] Start review: load review state, show files in quickfix list
 - [ ] Open files from the quickfix
 - [ ] Cleanup review scratch buffers on close/review quit

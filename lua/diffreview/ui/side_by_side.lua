@@ -234,4 +234,50 @@ function M.display_side_by_side(ui, diff, layout)
   vim.api.nvim_set_current_win(state.main_window)
 end
 
+---@param ui ReviewUi
+---@return nil
+function M.cleanup(ui)
+  local state = ui.side_by_side
+  local active_window_lost = state.native_diff.active
+    and (
+      not has_owned_tab(state)
+      or not has_owned_window(state, state.main_window)
+      or not has_owned_window(state, state.companion_window)
+    )
+  clear_previous_presentation(state, true, active_window_lost)
+
+  if has_owned_tab(state) then
+    local review_tab = state.tabpage
+    ---@cast review_tab integer
+    local return_tab = vim.api.nvim_get_current_tabpage()
+    if #vim.api.nvim_list_tabpages() == 1 then
+      vim.cmd('tabnew')
+      return_tab = vim.api.nvim_get_current_tabpage()
+    end
+    vim.api.nvim_set_current_tabpage(review_tab)
+    vim.cmd('tabclose!')
+    if return_tab ~= review_tab and vim.api.nvim_tabpage_is_valid(return_tab) then
+      vim.api.nvim_set_current_tabpage(return_tab)
+    end
+  end
+
+  for _, field in ipairs({ 'main_snapshot_buffer', 'companion_snapshot_buffer', 'information_buffer' }) do
+    local buffer = state[field]
+    if
+      buffer ~= nil
+      and vim.api.nvim_buf_is_valid(buffer)
+      and is_owned(buffer, vim.api.nvim_buf_get_var, state.instance_id)
+    then
+      vim.api.nvim_buf_delete(buffer, { force = true })
+    end
+    state[field] = nil
+  end
+
+  state.tabpage = nil
+  state.main_window = nil
+  state.companion_window = nil
+  state.decorated_buffer = nil
+  state.active_layout = nil
+end
+
 return M

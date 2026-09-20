@@ -189,6 +189,83 @@ M.display_side_by_side_should_preserve_preexisting_scrollopt_hor_across_two_wind
   vim.o.scrollopt = initial
 end
 
+M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = function()
+  local initial_scrollopt = vim.o.scrollopt
+  vim.o.scrollopt = 'ver,jump'
+  local review_ui = ui.get_ui()
+  review_ui:display_diff_side_by_side({
+    operation = 'error',
+    attempted_operation = 'modified',
+    path = 'error.txt',
+    message = 'load failed',
+  }, 'vertical')
+  local information_buffer = review_ui.side_by_side.information_buffer
+  review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
+  local state = review_ui.side_by_side
+  local tabpage = state.tabpage
+  local main_window = state.main_window
+  local companion_window = state.companion_window
+  local main_buffer = state.main_snapshot_buffer
+  local companion_buffer = state.companion_snapshot_buffer
+  assert(tabpage ~= nil, 'expected review tab')
+  assert(main_window ~= nil, 'expected main window')
+  assert(companion_window ~= nil, 'expected companion window')
+  assert(information_buffer ~= nil, 'expected information buffer')
+  assert(main_buffer ~= nil, 'expected main snapshot buffer')
+  assert(companion_buffer ~= nil, 'expected companion snapshot buffer')
+  ---@cast tabpage integer
+  ---@cast main_window integer
+  ---@cast companion_window integer
+  ---@cast information_buffer integer
+  ---@cast main_buffer integer
+  ---@cast companion_buffer integer
+  assert(state.native_diff.active, 'expected active native diff')
+  assert(vim.o.scrollopt == 'ver,jump,hor', 'expected owned horizontal scrolling')
+
+  review_ui:cleanup()
+
+  assert(not vim.api.nvim_tabpage_is_valid(tabpage), 'expected review tab deletion')
+  assert(not vim.api.nvim_win_is_valid(main_window), 'expected main window deletion')
+  assert(not vim.api.nvim_win_is_valid(companion_window), 'expected companion window deletion')
+  for _, buffer in ipairs({ information_buffer, main_buffer, companion_buffer }) do
+    assert(not vim.api.nvim_buf_is_valid(buffer), 'expected owned scratch buffer deletion')
+  end
+  assert(not state.native_diff.active, 'expected released native diff')
+  assert(next(state.native_diff.window_options) == nil, 'expected cleared native diff options')
+  assert(vim.o.scrollopt == 'ver,jump', 'expected owned horizontal scrolling removal')
+  for _, field in ipairs({
+    'tabpage',
+    'main_window',
+    'companion_window',
+    'main_snapshot_buffer',
+    'companion_snapshot_buffer',
+    'information_buffer',
+    'decorated_buffer',
+    'active_layout',
+  }) do
+    assert(state[field] == nil, 'expected cleared ' .. field)
+  end
+  review_ui:cleanup()
+  vim.o.scrollopt = initial_scrollopt
+end
+
+M.cleanup_should_preserve_borrowed_path_buffer_when_it_is_decorated = function()
+  local path = vim.fn.tempname() .. '.txt'
+  vim.fn.writefile({ 'borrowed' }, path)
+  local review_ui = ui.get_ui()
+  review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.path(path) }, 'vertical')
+  local buffer = helpers.main_buffer(review_ui)
+  local namespace = review_ui.side_by_side.namespace
+  assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 1, 'expected decoration')
+
+  review_ui:cleanup()
+
+  assert(vim.api.nvim_buf_is_valid(buffer), 'expected borrowed path buffer preservation')
+  assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 0, 'expected decoration cleanup')
+  vim.api.nvim_buf_delete(buffer, { force = true })
+  vim.fn.delete(path)
+end
+
 local function unrelated_tab_state(tabpage)
   local state = {}
   for _, window in ipairs(vim.api.nvim_tabpage_list_wins(tabpage)) do

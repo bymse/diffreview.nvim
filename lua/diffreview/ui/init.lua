@@ -41,6 +41,11 @@ end
 ---@return nil
 function ReviewUi:display_diff_inlinde(diff) end
 
+---@return nil
+function ReviewUi:cleanup()
+  side_by_side.cleanup(self)
+end
+
 ---@return ReviewUi
 function M.get_ui()
   next_instance_id = next_instance_id + 1

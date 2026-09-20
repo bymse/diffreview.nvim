@@ -56,28 +56,7 @@ end
 
 ---@param review_ui ReviewUi
 function M.cleanup(review_ui)
-  local state = review_ui.side_by_side
-  if state.native_diff.active then
-    review_ui:display_diff_side_by_side({
-      operation = 'error',
-      attempted_operation = 'modified',
-      path = 'cleanup',
-      message = 'cleanup',
-    }, 'vertical')
-  end
-  if state.tabpage ~= nil and vim.api.nvim_tabpage_is_valid(state.tabpage) then
-    vim.api.nvim_set_current_tabpage(state.tabpage)
-    vim.cmd('tabclose!')
-  end
-  for _, buffer in pairs({
-    state.main_snapshot_buffer,
-    state.companion_snapshot_buffer,
-    state.information_buffer,
-  }) do
-    if vim.api.nvim_buf_is_valid(buffer) then
-      vim.api.nvim_buf_delete(buffer, { force = true })
-    end
-  end
+  review_ui:cleanup()
 end
 
 return M
