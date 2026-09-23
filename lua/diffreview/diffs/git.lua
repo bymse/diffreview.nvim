@@ -5,6 +5,7 @@ local parsers = require('diffreview.diffs.parsers')
 ---@field ok boolean
 ---@field error string|nil
 ---@field code integer|nil
+---@field canceled boolean|nil
 
 ---@class GitRemote
 ---@field name string
@@ -21,6 +22,7 @@ local M = {}
 
 ---@class GitRepo
 ---@field private dir string|nil
+---@field private operation AsyncOperation|nil
 local GitRepo = {}
 GitRepo.__index = GitRepo
 
@@ -28,11 +30,18 @@ GitRepo.__index = GitRepo
 ---@param cwd string|nil
 ---@param parse_output fun(raw_out: string): any
 ---@param text boolean
+---@param operation AsyncOperation|nil
 ---@return GitResult, any|nil
-local function run_parsed(cmd, cwd, parse_output, text)
-  local started, result = pcall(async.system, cmd, { cwd = cwd, text = text })
+local function run_parsed(cmd, cwd, parse_output, text, operation)
+  if async.is_canceled(operation) then
+    return { ok = false, canceled = true }
+  end
+  local started, result = pcall(async.system, cmd, { cwd = cwd, text = text }, operation)
   if not started then
     return { ok = false, error = tostring(result) }
+  end
+  if async.is_canceled(operation) then
+    return { ok = false, canceled = true }
   end
 
   if result.code ~= 0 then
@@ -50,14 +59,16 @@ end
 
 ---@param cmd string[]
 ---@param cwd string|nil
+---@param operation AsyncOperation|nil
+---@return GitResult
 ---@return string|nil
-local function run_optional_trimmed(cmd, cwd)
-  local result, output = run_parsed(cmd, cwd, vim.trim, true)
+local function run_optional_trimmed(cmd, cwd, operation)
+  local result, output = run_parsed(cmd, cwd, vim.trim, true, operation)
   if not result.ok then
-    return nil
+    return result, nil
   end
 
-  return output
+  return result, output
 end
 
 ---@param raw_out string
@@ -101,7 +112,7 @@ function GitRepo:rev_parse(expression)
     expression .. '^{commit}',
   }
 
-  return run_parsed(cmd, self.dir, vim.trim, true)
+  return run_parsed(cmd, self.dir, vim.trim, true, self.operation)
 end
 
 ---@param ref string
@@ -113,14 +124,14 @@ end
 ---@param ref string
 ---@return GitResult, string|nil
 function GitRepo:symbolic_ref(ref)
-  return run_parsed({ 'git', 'symbolic-ref', '--quiet', '--', ref }, self.dir, vim.trim, true)
+  return run_parsed({ 'git', 'symbolic-ref', '--quiet', '--', ref }, self.dir, vim.trim, true, self.operation)
 end
 
 ---@param first string
 ---@param second string
 ---@return GitResult, string|nil
 function GitRepo:merge_base(first, second)
-  return run_parsed({ 'git', 'merge-base', '--', first, second }, self.dir, vim.trim, true)
+  return run_parsed({ 'git', 'merge-base', '--', first, second }, self.dir, vim.trim, true, self.operation)
 end
 
 ---@param path string
@@ -129,10 +140,14 @@ function GitRepo:empty_source_numstat(path)
   local started, result = pcall(
     async.system,
     { 'git', 'diff', '--no-index', '--numstat', '-z', '--', '/dev/null', path },
-    { cwd = self.dir, text = false }
+    { cwd = self.dir, text = false },
+    self.operation
   )
   if not started then
     return { ok = false, error = tostring(result) }, nil, nil, nil
+  end
+  if async.is_canceled(self.operation) then
+    return { ok = false, canceled = true }, nil, nil, nil
   end
   if result.code ~= 1 then
     return { ok = false, error = result.stderr, code = result.code }, nil, nil, nil
@@ -164,7 +179,7 @@ function GitRepo:diff(from_commit_oid, to_commit_oid)
   end
   table.insert(cmd, '--')
 
-  return run_parsed(cmd, self.dir, parsers.parse_diff_output, false)
+  return run_parsed(cmd, self.dir, parsers.parse_diff_output, false, self.operation)
 end
 
 ---@param oid string
@@ -174,49 +189,68 @@ function GitRepo:load_text(oid)
     error('invalid object ID: ' .. oid)
   end
 
-  return run_parsed({ 'git', 'cat-file', 'blob', oid }, self.dir, parse_text_output, true)
+  return run_parsed({ 'git', 'cat-file', 'blob', oid }, self.dir, parse_text_output, true, self.operation)
 end
 
 ---@return GitResult, string[]|nil
 function GitRepo:ls_files()
   local cmd = { 'git', 'ls-files', '--others', '--exclude-standard', '-z' }
-  return run_parsed(cmd, self.dir, parsers.parse_ls_files_output, false)
+  return run_parsed(cmd, self.dir, parsers.parse_ls_files_output, false, self.operation)
 end
 
 ---@return GitResult, GitRepoMeta|nil
 function GitRepo:repo_meta()
-  local root_result, root = run_parsed({ 'git', 'rev-parse', '--show-toplevel' }, self.dir, vim.trim, true)
+  local root_result, root =
+    run_parsed({ 'git', 'rev-parse', '--show-toplevel' }, self.dir, vim.trim, true, self.operation)
   if not root_result.ok then
     return root_result, nil
   end
 
-  local remotes_result, remotes = run_parsed({ 'git', 'remote', '-v' }, self.dir, parsers.parse_remote_output, true)
+  local remotes_result, remotes =
+    run_parsed({ 'git', 'remote', '-v' }, self.dir, parsers.parse_remote_output, true, self.operation)
   if not remotes_result.ok then
     return remotes_result, nil
+  end
+
+  local branch_result, branch =
+    run_optional_trimmed({ 'git', 'symbolic-ref', '--quiet', '--short', 'HEAD' }, self.dir, self.operation)
+  if branch_result.canceled then
+    return branch_result, nil
+  end
+  local upstream_result, upstream_branch = run_optional_trimmed(
+    { 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}' },
+    self.dir,
+    self.operation
+  )
+  if upstream_result.canceled then
+    return upstream_result, nil
+  end
+  local default_result, default_branch = run_optional_trimmed(
+    { 'git', 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD' },
+    self.dir,
+    self.operation
+  )
+  if default_result.canceled then
+    return default_result, nil
   end
 
   ---@type GitRepoMeta
   local meta = {
     root = root,
     remotes = remotes,
-    branch = run_optional_trimmed({ 'git', 'symbolic-ref', '--quiet', '--short', 'HEAD' }, self.dir),
-    upstream_branch = run_optional_trimmed(
-      { 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}' },
-      self.dir
-    ),
-    default_branch = run_optional_trimmed(
-      { 'git', 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD' },
-      self.dir
-    ),
+    branch = branch,
+    upstream_branch = upstream_branch,
+    default_branch = default_branch,
   }
 
   return { ok = true }, meta
 end
 
 ---@param dir string|nil
+---@param operation AsyncOperation|nil
 ---@return GitRepo
-function M.get_repo(dir)
-  return setmetatable({ dir = dir }, GitRepo)
+function M.get_repo(dir, operation)
+  return setmetatable({ dir = dir, operation = operation }, GitRepo)
 end
 
 return M

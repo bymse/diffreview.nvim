@@ -1,4 +1,8 @@
 ---@alias ViewLayout 'horizontal'|'vertical'
+---@alias ReviewView 'side_by_side'|'inline'
+---@class SetupOptions
+---@field layout ViewLayout|nil
+---@field view ReviewView|nil
 ---@class Config
 ---@field layout ViewLayout
----@field view 'side_by_side'|'inline'
+---@field view ReviewView

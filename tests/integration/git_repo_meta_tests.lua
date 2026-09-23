@@ -1,6 +1,12 @@
 local git = require('diffreview.diffs.git')
+local async = require('diffreview.async')
+local diffs = require('diffreview.diffs')
 local git_repo = require('helpers.git_repo')
 local M = {}
+---@type any
+local async_adapter = async
+---@type any
+local vim_runtime = vim
 
 ---@param cwd string|nil
 ---@return GitRepoMeta
@@ -142,6 +148,62 @@ M.repo_meta_should_return_error_when_directory_is_not_a_repository = function()
     assert(not result.ok, 'expected repo_meta to fail')
     assert(result.error ~= nil and result.error ~= '', 'expected error details')
     assert(meta == nil, 'expected no repository metadata')
+  end)
+end
+
+M.repo_meta_should_propagate_cancellation_from_optional_metadata_commands = function()
+  git_repo.with_repo(function(test_repo)
+    local original_system = async_adapter.system
+    local operation = async.new_operation()
+    local calls = 0
+    async_adapter.system = function(_, _, current_operation)
+      calls = calls + 1
+      if calls == 3 then
+        async.cancel(assert(current_operation))
+      end
+      return { code = 0, signal = 0, stdout = calls == 1 and test_repo.cwd or '', stderr = '' }
+    end
+    local ok, err = xpcall(function()
+      local result, meta = git.get_repo(test_repo.cwd, operation):repo_meta()
+      assert(not result.ok and result.canceled, 'expected optional metadata cancellation')
+      assert(result.error == nil and meta == nil, 'expected no cancellation diagnostic or metadata')
+    end, debug.traceback)
+    async_adapter.system = original_system
+    assert(ok, err)
+  end)
+end
+
+M.git_commands_should_return_canceled_without_diagnostics_when_operation_is_canceled_before_or_during_execution = function()
+  git_repo.with_repo(function(test_repo)
+    test_repo:write_file('tracked.txt', { 'base' })
+    test_repo:add('tracked.txt')
+    test_repo:commit('base')
+    local before = async.new_operation()
+    async.cancel(before)
+    local before_result = git.get_repo(test_repo.cwd, before):rev_parse('HEAD')
+    assert(not before_result.ok and before_result.canceled, 'expected cancellation before command')
+    assert(before_result.error == nil, 'expected no pre-execution diagnostic')
+
+    local during = async.new_operation()
+    local head = test_repo:current_sha()
+    local original_system = vim_runtime.system
+    vim_runtime.system = function(_, _, callback)
+      vim.schedule(function()
+        async.cancel(during)
+        callback({ code = 0, signal = 0, stdout = head, stderr = '' })
+      end)
+      return { kill = function() end }
+    end
+    local ok, err = xpcall(function()
+      local during_result = git.get_repo(test_repo.cwd, during):rev_parse('HEAD')
+      assert(not during_result.ok and during_result.canceled, 'expected cancellation during command')
+      assert(during_result.error == nil, 'expected no in-flight diagnostic')
+      local load_result = diffs.load_review({ cwd = test_repo.cwd, from = 'HEAD' }, during)
+      assert(not load_result.ok and load_result.error.kind == 'canceled', 'expected canceled load result')
+      assert(load_result.error.detail == nil, 'expected canceled load without detail')
+    end, debug.traceback)
+    vim_runtime.system = original_system
+    assert(ok, err)
   end)
 end
 

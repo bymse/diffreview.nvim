@@ -48,3 +48,31 @@ Finding: Safe cleanup requires both a stable list ID and exact ownership-context
 Impact: Missing, stale, already-cleaned, and foreign identities can remain safe no-ops without disturbing unrelated editor state.
 Use in future specs: Preserve `ReviewUi.quickfix_id` and `quickfix_context` as the lifecycle cleanup seam.
 Source: Spec 003 cleanup integration verification.
+
+## 2026-09-23 — Cancellable review lifecycle
+
+Finding: Marking an async operation canceled before process termination and checking operation identity at lifecycle commit points prevents late callbacks from reactivating stopped work.
+Impact: Cancellation can remain independent of validated diff options while propagating consistently through Git and loader results.
+Use in future specs: Retain the operation on `GitRepo`, map cancellation without diagnostic detail, and guard every UI creation or active-state commit.
+Source: Spec 004 implementation and cancellation integration tests.
+
+## 2026-09-23 — Async completion guards
+
+Finding: `async.system` must mark completion before scheduling its coroutine continuation so duplicate process callbacks cannot resume one operation twice.
+Impact: Process termination races and repeated callbacks cannot duplicate lifecycle side effects.
+Use in future specs: Test callback idempotence explicitly whenever coroutine resumption depends on external callbacks.
+Source: Spec 004 final quality-review repair.
+
+## 2026-09-23 — Transactional public setup
+
+Finding: Multi-command setup must retain its configuration marker only after every command registers and remove only commands acquired by a failed attempt.
+Impact: Registration failure does not consume setup or leak a partial public interface.
+Use in future specs: Treat public initialization as a transaction and verify retryability after each acquisition failure.
+Source: Spec 004 implementation and integration verification.
+
+## 2026-09-23 — Stateful lifecycle tests
+
+Finding: Real lifecycle tests can use a temporary repository and real `ReviewUi`; only genuinely suspended process scheduling needs a narrow fake.
+Impact: End-to-end resource ownership is proven without broad mocks, while teardown prevents state leakage between tests.
+Use in future specs: Use unconditional teardown for active reviews, quickfix windows, temporary buffers, and patched globals, and regenerate evidence after test renames.
+Source: Spec 004 quality-review repairs.

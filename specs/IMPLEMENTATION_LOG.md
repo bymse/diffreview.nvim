@@ -80,3 +80,40 @@ Important decisions:
 
 Follow-up risks:
 - None.
+
+## 004-expose-review-lifecycle — 2026-09-23
+
+Status: PASS
+
+Changed files:
+- `lua/diffreview/async.lua`
+- `lua/diffreview/config.lua`
+- `lua/diffreview/diffs/git.lua`
+- `lua/diffreview/diffs/init.lua`
+- `lua/diffreview/init.lua`
+- `lua/diffreview/review.lua`
+- `tests/integration/git_repo_meta_tests.lua`
+- `tests/integration/plugin_test.lua`
+- `tests/integration/review_tests.lua`
+- `tests/integration/init.lua`
+- `tests/functional/plugin_test.lua`
+- `specs/004-expose-review-lifecycle.md`
+
+Verification:
+- `just lint` — PASS
+- `just format-check` — PASS
+- `just test-integration` — PASS (121 tests)
+- `just test-functional` — PASS (2 tests)
+- `just test` — PASS (44 unit, 121 integration, 2 functional tests)
+
+Judge result:
+- PASS: spec compliance 5/5, architectural fit 5/5, simplicity/YAGNI 4/5, test quality 4/5, regression risk 4/5, maintainability 4/5.
+
+Important decisions:
+- Public setup commits configuration only after both commands register and rolls back resources acquired by a failed attempt.
+- `review.lua` owns the singleton lifecycle, notifications, UI rollback, and operation-identity checks around every asynchronous completion.
+- Cancellation remains separate from diff options and propagates through repository commands as a detail-free terminal result.
+- Duplicate process callbacks cannot resume or commit one lifecycle operation more than once.
+
+Follow-up risks:
+- None.
