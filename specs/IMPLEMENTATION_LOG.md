@@ -161,3 +161,19 @@ Important decisions:
 
 Follow-up risks:
 - A failure after quickfix mutation may leave the newly selected list or opened window visible; this is accepted to keep display orchestration simple.
+
+## Review comments follow-up — 2026-09-23
+
+Status: PASS
+
+Changes:
+- Added focused unit coverage for `config.normalize`, including defaults, supported options, and every validation error; setup and lifecycle tests retain only their distinct behavioral assertions.
+- Added direct integration coverage for the new `GitRepo:symbolic_ref`, `GitRepo:merge_base`, and `GitRepo:untracked_file_stats` exports, including success and failure results plus text and binary file stats.
+
+Verification:
+- `just lint` — PASS
+- `just format-check` — PASS
+- `just test` — PASS (50 unit, 123 integration, 2 functional tests)
+
+Follow-up risks:
+- None.
