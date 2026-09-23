@@ -88,11 +88,15 @@ end
 ---@param repo GitRepo
 ---@param expression string
 ---@param exact boolean
+---@param operation AsyncOperation|nil
 ---@return string|nil, boolean|nil, string|nil
-local function resolve_revision(repo, expression, exact)
+local function resolve_revision(repo, expression, exact, operation)
   local candidates = {}
   if expression:match('^refs/heads/') or expression:match('^refs/remotes/') or expression:match('^refs/tags/') then
     local result, oid = repo:named_ref(expression)
+    if async.is_canceled(operation) then
+      return nil, nil, nil
+    end
     if not result.ok then
       return nil, nil, result.error
     end
@@ -105,6 +109,9 @@ local function resolve_revision(repo, expression, exact)
   elseif not expression:match('^refs/') then
     for _, prefix in ipairs({ 'refs/heads/', 'refs/remotes/', 'refs/tags/' }) do
       local result, oid = repo:named_ref(prefix .. expression)
+      if async.is_canceled(operation) then
+        return nil, nil, nil
+      end
       if result.ok then
         table.insert(candidates, { oid = oid, branch = prefix ~= 'refs/tags/' })
       end
@@ -117,6 +124,9 @@ local function resolve_revision(repo, expression, exact)
     return candidates[1].oid, exact and false or candidates[1].branch, nil
   end
   local result, oid = repo:rev_parse(expression)
+  if async.is_canceled(operation) then
+    return nil, nil, nil
+  end
   if not result.ok then
     return nil, nil, result.error
   end
@@ -168,9 +178,9 @@ function M.load_review(options, operation)
   if root_path == nil then
     return failure('filesystem', 'unable to access cwd: ' .. cwd)
   end
-  local repo = git.get_repo(root_path, operation)
+  local repo = git.get_repo(root_path)
   local meta_result, meta = repo:repo_meta()
-  if meta_result.canceled or async.is_canceled(operation) then
+  if async.is_canceled(operation) then
     return failure('canceled', nil)
   end
   if not meta_result.ok or meta == nil or meta.root == nil then
@@ -182,7 +192,7 @@ function M.load_review(options, operation)
   local working_state = valid_options.to == nil
   if valid_options.from == nil then
     local default_result, default_ref = repo:symbolic_ref('refs/remotes/origin/HEAD')
-    if default_result.canceled or async.is_canceled(operation) then
+    if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
     if not default_result.ok or default_ref == nil then
@@ -191,7 +201,7 @@ function M.load_review(options, operation)
     if not default_ref:match('^refs/remotes/origin/.+$') then
       return failure('missing_default_branch', 'origin/HEAD does not target an origin remote ref')
     end
-    local default_oid, _, default_error = resolve_revision(repo, default_ref, false)
+    local default_oid, _, default_error = resolve_revision(repo, default_ref, false, operation)
     if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
@@ -199,14 +209,14 @@ function M.load_review(options, operation)
       return failure('missing_default_branch', default_error)
     end
     local head_result, head_oid = repo:rev_parse('HEAD')
-    if head_result.canceled or async.is_canceled(operation) then
+    if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
     if not head_result.ok or head_oid == nil then
       return failure('revision', head_result.error)
     end
     local merge_result, merge_oid = repo:merge_base(default_oid, head_oid)
-    if merge_result.canceled or async.is_canceled(operation) then
+    if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
     if not merge_result.ok or merge_oid == nil then
@@ -215,7 +225,7 @@ function M.load_review(options, operation)
     from_oid = merge_oid
   else
     local resolved_from, from_is_branch, from_error =
-      resolve_revision(repo, valid_options.from, valid_options.to ~= nil)
+      resolve_revision(repo, valid_options.from, valid_options.to ~= nil, operation)
     if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
@@ -223,7 +233,7 @@ function M.load_review(options, operation)
       return failure('revision', from_error)
     end
     if valid_options.to ~= nil then
-      local resolved_to, _, to_error = resolve_revision(repo, valid_options.to, true)
+      local resolved_to, _, to_error = resolve_revision(repo, valid_options.to, true, operation)
       if async.is_canceled(operation) then
         return failure('canceled', nil)
       end
@@ -234,14 +244,14 @@ function M.load_review(options, operation)
       to_oid = resolved_to
     elseif from_is_branch then
       local head_result, head_oid = repo:rev_parse('HEAD')
-      if head_result.canceled or async.is_canceled(operation) then
+      if async.is_canceled(operation) then
         return failure('canceled', nil)
       end
       if not head_result.ok or head_oid == nil then
         return failure('revision', head_result.error)
       end
       local merge_result, merge_oid = repo:merge_base(resolved_from, head_oid)
-      if merge_result.canceled or async.is_canceled(operation) then
+      if async.is_canceled(operation) then
         return failure('canceled', nil)
       end
       if not merge_result.ok or merge_oid == nil then
@@ -254,7 +264,7 @@ function M.load_review(options, operation)
   end
 
   local diff_result, diffs = repo:diff(from_oid, to_oid)
-  if diff_result.canceled or async.is_canceled(operation) then
+  if async.is_canceled(operation) then
     return failure('canceled', nil)
   end
   if not diff_result.ok or diffs == nil then
@@ -276,15 +286,15 @@ function M.load_review(options, operation)
   end
   if working_state then
     local paths_result, paths = repo:ls_files()
-    if paths_result.canceled or async.is_canceled(operation) then
+    if async.is_canceled(operation) then
       return failure('canceled', nil)
     end
     if not paths_result.ok or paths == nil then
       return failure('git', paths_result.error)
     end
     for _, path in ipairs(paths) do
-      local inspect_result, added, removed, binary = repo:empty_source_numstat(path)
-      if inspect_result.canceled or async.is_canceled(operation) then
+      local inspect_result, added, removed, binary = repo:untracked_file_stats(path)
+      if async.is_canceled(operation) then
         return failure('canceled', nil)
       end
       if not inspect_result.ok or added == nil or removed == nil or binary == nil then

@@ -180,8 +180,8 @@ M.start_should_reject_second_start_while_loader_is_suspended = function()
       callback = completed
       return { kill = function() end }
     end
-    diffs_adapter.load_review = function(_, operation)
-      async.system({ 'git', 'status' }, {}, operation)
+    diffs_adapter.load_review = function()
+      async.system({ 'git', 'status' }, {})
       finished = true
       return loaded_result({
         { id = 'new:file.txt', display_path = 'file.txt', added_lines = 1, removed_lines = 0, viewed = false },
@@ -221,8 +221,8 @@ M.start_should_complete_lifecycle_once_when_process_callback_is_repeated = funct
         callback = completed
         return { kill = function() end }
       end
-      diffs_adapter.load_review = function(_, operation)
-        async.system({ 'git', 'status' }, {}, operation)
+      diffs_adapter.load_review = function()
+        async.system({ 'git', 'status' }, {})
         return loaded_result({
           { id = 'new:file.txt', display_path = 'file.txt', added_lines = 1, removed_lines = 0, viewed = false },
         })
@@ -251,7 +251,7 @@ M.start_should_complete_lifecycle_once_when_process_callback_is_repeated = funct
   end)
 end
 
-M.stop_should_suppress_late_canceled_start_completion = function()
+M.stop_should_suppress_late_start_completion_without_canceling_system_call = function()
   with_review_mocks(function(notifications)
     local original_system = vim_api.system
     local ok, err = xpcall(function()
@@ -266,8 +266,8 @@ M.stop_should_suppress_late_canceled_start_completion = function()
           end,
         }
       end
-      diffs_adapter.load_review = function(_, operation)
-        async.system({ 'git', 'status' }, {}, operation)
+      diffs_adapter.load_review = function()
+        async.system({ 'git', 'status' }, {})
         finished = true
         return loaded_result({
           { id = 'new:file.txt', display_path = 'file.txt', added_lines = 1, removed_lines = 0, viewed = false },
@@ -275,7 +275,7 @@ M.stop_should_suppress_late_canceled_start_completion = function()
       end
       review.start(config, {})
       review.stop()
-      assert(killed and callback ~= nil, 'expected in-flight process cancellation')
+      assert(not killed and callback ~= nil, 'expected system call to remain independent of cancellation')
       callback({ code = 0, signal = 0, stdout = '', stderr = '' })
       assert(
         vim.wait(1000, function()

@@ -117,3 +117,20 @@ Important decisions:
 
 Follow-up risks:
 - None.
+
+## Spec 004 review follow-up — 2026-09-23
+
+Status: PASS
+
+Changes:
+- Renamed `GitRepo:empty_source_numstat` to `GitRepo:untracked_file_stats` to make its purpose explicit.
+- Removed cancellation state from system-call and Git-adapter interfaces; `load_review` now checks cancellation between top-level loading steps.
+- Added coverage for cancellation between revision candidates and untracked-file inspections.
+
+Verification:
+- `just lint` — PASS
+- `just format-check` — PASS
+- `just test` — PASS (44 unit, 121 integration, 2 functional tests)
+
+Follow-up risks:
+- In-flight system calls are not terminated; their results are ignored at the next loader or lifecycle boundary after cancellation.

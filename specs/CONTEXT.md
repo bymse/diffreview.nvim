@@ -14,11 +14,11 @@ After one explicit `require('diffreview').setup({ layout, view })` call, users c
 - Shared `ChangedFileViewModel` and `DiffViewModel` definitions move from `diffreview.ui.diff_view_model` to `diffreview.diff_view_model`; existing UI modules continue to consume those types directly, with no mapper module.
 - Stable changed-file IDs are `stored:<old-path>` when baseline content exists and `new:<new-path>` for added, copied, or untracked files. They are independent of Git object IDs and are the future seam for quickfix lookup, reviewed state, and comments.
 - Zero revisions use the merge-base of `HEAD` and the default branch discovered through `origin/HEAD`; one local or remote branch uses its merge-base with `HEAD`; one tag or hash uses its exact commit; both forms compare through the current tracked and untracked working state. Two revisions resolve exact commit endpoints and exclude worktree and untracked changes. Missing defaults and unresolved revisions fail clearly rather than guessing.
-- `review.lua` owns the singleton `idle`, `starting`, and `active` lifecycle, asynchronous orchestration, cancellation, rollback, and user notifications. A second start is rejected while starting or active. Stop invalidates and kills in-flight work where possible, suppresses the canceled start error, or cleans the active UI.
+- `review.lua` owns the singleton `idle`, `starting`, and `active` lifecycle, asynchronous orchestration, cancellation, rollback, and user notifications. A second start is rejected while starting or active. Stop invalidates in-flight loading, suppresses its eventual completion, or cleans the active UI.
 - `init.lua` is the thin public and command interface. Setup is explicit and single-use, accepts top-level `layout` and `view`, defaults to `horizontal` and `side_by_side`, and rejects every later call. Commands are registered only by successful setup.
 - `ReviewUi` owns its quickfix list identity and context. Cleanup is idempotent because rollback and partial resource acquisition require repeated disposal to be safe, even though setup and review start are not idempotent.
 - An empty comparison is successful Git loading but does not create an active review; it produces a user notification and leaves the lifecycle idle.
-- No external dependencies are added. Cancellation uses the pinned Neovim `vim.system` process capabilities plus operation invalidation to prevent late callbacks from committing obsolete state.
+- No external dependencies are added. Cancellation is checked between top-level loading steps, while operation invalidation prevents late callbacks from committing obsolete state.
 
 ## Codebase Map
 
@@ -27,9 +27,9 @@ After one explicit `require('diffreview').setup({ layout, view })` call, users c
 - `lua/diffreview/init.lua` — current hello placeholder; becomes the explicit setup and public start/stop interface plus command argument adapter.
 - `lua/diffreview/config.lua` — current top-level layout/view annotations; becomes the normalized setup configuration contract.
 - `lua/diffreview/review.lua` — new lifecycle and orchestration module introduced in the final phase.
-- `lua/diffreview/async.lua` — coroutine wrapper around `vim.system`; must support cancellation without double-resuming completed or invalidated work.
+- `lua/diffreview/async.lua` — coroutine wrapper around `vim.system` plus lightweight operation flags; system execution remains independent of cancellation and guards against duplicate callback resumes.
 - `lua/diffreview/diffs/init.lua` — empty `load_review` placeholder; becomes the lightweight review loader and owner of retained Git metadata.
-- `lua/diffreview/diffs/git.lua` — Git repository adapter for revision resolution, diff collection, untracked discovery, metadata, and blob loading; extended for branch classification, merge-base, summary inspection, and optional cancellation propagation.
+- `lua/diffreview/diffs/git.lua` — Git repository adapter for revision resolution, diff collection, untracked discovery, metadata, and blob loading; extended for branch classification, merge-base, and summary inspection while remaining independent of cancellation.
 - `lua/diffreview/diffs/parsers.lua` — validated Git wire-format parsers and the existing `GitDiff` record carrying paths, modes, object IDs, status, counts, and binary state.
 - `lua/diffreview/diffs/status.lua` and `lua/diffreview/file_mode.lua` — validated Git statuses and file modes reused by summary normalization.
 - `lua/diffreview/ui/diff_view_model.lua` — current shared type location; moved to `lua/diffreview/diff_view_model.lua` without implementing full-model loading.

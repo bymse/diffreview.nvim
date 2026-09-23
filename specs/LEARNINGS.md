@@ -76,3 +76,10 @@ Finding: Real lifecycle tests can use a temporary repository and real `ReviewUi`
 Impact: End-to-end resource ownership is proven without broad mocks, while teardown prevents state leakage between tests.
 Use in future specs: Use unconditional teardown for active reviews, quickfix windows, temporary buffers, and patched globals, and regenerate evidence after test renames.
 Source: Spec 004 quality-review repairs.
+
+## 2026-09-23 — Review follow-up: loader-level cancellation
+
+Finding: Cancellation can be checked between loader steps without coupling `async.system` or the Git adapter to operation state.
+Impact: In-flight commands finish normally, while revision resolution, untracked-file inspection, and lifecycle commit boundaries prevent canceled work from progressing or becoming active.
+Use in future specs: Keep system execution cancellation-agnostic and pass cancellation state only to orchestration-level loaders.
+Source: Review comment follow-up after Spec 004.

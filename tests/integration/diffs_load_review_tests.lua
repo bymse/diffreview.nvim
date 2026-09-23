@@ -1,4 +1,5 @@
 local diffs = require('diffreview.diffs')
+local async = require('diffreview.async')
 local git = require('diffreview.diffs.git')
 local git_repo = require('helpers.git_repo')
 local M = {}
@@ -526,7 +527,7 @@ M.load_review_should_return_filesystem_error_when_an_untracked_file_cannot_be_in
       local original_ls_files = git_repository.ls_files
       git_repository.ls_files = function(self)
         local list_result, paths = original_ls_files(self)
-        self.empty_source_numstat = function()
+        self.untracked_file_stats = function()
           return { ok = false, error = 'injected inspection failure' }, nil, nil, nil
         end
         return list_result, paths
@@ -553,6 +554,72 @@ M.load_review_should_return_git_error_when_tracked_diff_command_fails = function
     local result = diffs.load_review({ cwd = repo.cwd, from = 'HEAD' })
     assert_failure(result, 'git')
     assert(result.error.detail ~= nil and result.error.detail ~= '', 'expected Git command diagnostic')
+  end)
+end
+
+M.load_review_should_stop_revision_resolution_when_operation_is_canceled = function()
+  git_repo.with_repo(function(repo)
+    repo:write_file('tracked.txt', { 'base' })
+    repo:add('tracked.txt')
+    repo:commit('base')
+    local operation = async.new_operation()
+    ---@type any
+    local git_adapter = git
+    local original_get_repo = git_adapter.get_repo
+    local named_ref_calls = 0
+    git_adapter.get_repo = function(cwd)
+      local git_repository = original_get_repo(cwd)
+      local original_named_ref = git_repository.named_ref
+      git_repository.named_ref = function(self, ref)
+        named_ref_calls = named_ref_calls + 1
+        local result, oid = original_named_ref(self, ref)
+        async.cancel(operation)
+        return result, oid
+      end
+      return git_repository
+    end
+    local success, result = xpcall(function()
+      return diffs.load_review({ cwd = repo.cwd, from = 'HEAD' }, operation)
+    end, debug.traceback)
+    git_adapter.get_repo = original_get_repo
+    assert(success, result)
+    assert(not result.ok and result.error.kind == 'canceled', 'expected canceled load result')
+    assert(result.error.detail == nil, 'expected canceled load without detail')
+    assert(named_ref_calls == 1, 'expected cancellation between revision candidates')
+  end)
+end
+
+M.load_review_should_stop_untracked_file_inspection_when_operation_is_canceled = function()
+  git_repo.with_repo(function(repo)
+    repo:write_file('tracked.txt', { 'base' })
+    repo:add('tracked.txt')
+    repo:commit('base')
+    repo:write_file('first.txt', { 'first' })
+    repo:write_file('second.txt', { 'second' })
+    local operation = async.new_operation()
+    ---@type any
+    local git_adapter = git
+    local original_get_repo = git_adapter.get_repo
+    local inspection_calls = 0
+    git_adapter.get_repo = function(cwd)
+      local git_repository = original_get_repo(cwd)
+      local original_untracked_file_stats = git_repository.untracked_file_stats
+      git_repository.untracked_file_stats = function(self, path)
+        inspection_calls = inspection_calls + 1
+        local result, added, removed, binary = original_untracked_file_stats(self, path)
+        async.cancel(operation)
+        return result, added, removed, binary
+      end
+      return git_repository
+    end
+    local success, result = xpcall(function()
+      return diffs.load_review({ cwd = repo.cwd, from = 'HEAD' }, operation)
+    end, debug.traceback)
+    git_adapter.get_repo = original_get_repo
+    assert(success, result)
+    assert(not result.ok and result.error.kind == 'canceled', 'expected canceled load result')
+    assert(result.error.detail == nil, 'expected canceled load without detail')
+    assert(inspection_calls == 1, 'expected cancellation between untracked-file inspections')
   end)
 end
 
