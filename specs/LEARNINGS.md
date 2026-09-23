@@ -27,3 +27,10 @@ Finding: Shared diff view-model aliases now live at `diffreview.diff_view_model`
 Impact: UI and orchestration modules must import or reference the shared top-level model contract.
 Use in future specs: Do not restore `diffreview.ui.diff_view_model` or add a compatibility shim.
 Source: Spec 001 model relocation.
+
+## 2026-09-23 — Quickfix ownership identity
+
+Finding: Neovim retains the supplied quickfix context when an existing list is updated by stable ID.
+Impact: A `ReviewUi` instance can own and update one projection without exposing the global quickfix identity to callers.
+Use in future specs: Validate `ReviewUi.quickfix_id` against the exact stored instance context before cleanup or update; never infer ownership from the current list.
+Source: Spec 002 implementation and integration verification.

@@ -31,7 +31,7 @@ M.show_review_files_should_display_viewed_and_unviewed_files_when_creating_list 
   local unviewed = changed_file('path/relative', false)
   local viewed = changed_file('viewed/path/relative', true)
 
-  review_ui:show_review_files(nil, { unviewed, viewed })
+  review_ui:show_review_files({ unviewed, viewed })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
@@ -50,7 +50,7 @@ M.show_review_files_should_order_unviewed_before_viewed_when_states_are_mixed = 
   local viewed_second = changed_file('viewed-second.lua', true)
   local unviewed_second = changed_file('unviewed-second.lua', false)
 
-  review_ui:show_review_files(nil, { viewed_first, unviewed_first, viewed_second, unviewed_second })
+  review_ui:show_review_files({ viewed_first, unviewed_first, viewed_second, unviewed_second })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
@@ -68,7 +68,7 @@ M.show_review_files_should_store_file_id_without_file_location = function()
   local review_ui = ui.get_ui()
   local deleted = changed_file('deleted.lua', false)
 
-  review_ui:show_review_files(nil, { deleted })
+  review_ui:show_review_files({ deleted })
 
   local item = vim.fn.getqflist({ items = 1 }).items[1]
   assert(item.bufnr == 0, 'expected entry not to reference a file buffer')
@@ -80,7 +80,7 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
   reset_quickfix()
   local review_ui = ui.get_ui()
   local original = changed_file('original.lua', false)
-  local id = review_ui:show_review_files(nil, { original })
+  review_ui:show_review_files({ original })
   vim.fn.setqflist({}, ' ', {
     nr = '$',
     title = 'Unrelated list',
@@ -88,7 +88,7 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
   })
   local replacement = changed_file('replacement.lua', true)
 
-  review_ui:show_review_files(id, { replacement })
+  review_ui:show_review_files({ replacement })
 
   assert(
     vim.deep_equal(get_displayed_lines(), {
@@ -104,6 +104,38 @@ M.show_review_files_should_update_same_list_when_other_lists_exist = function()
     }),
     'expected the existing review list to contain the updated display'
   )
+end
+
+M.show_review_files_should_store_exact_instance_context_when_creating_list = function()
+  reset_quickfix()
+  local review_ui = ui.get_ui()
+
+  review_ui:show_review_files({ changed_file('owned.lua', false) })
+
+  local context = vim.fn.getqflist({ id = review_ui.quickfix_id, context = 1 }).context
+  assert(vim.deep_equal(context, review_ui.quickfix_context), 'expected exact instance ownership context')
+end
+
+M.show_review_files_should_preserve_unrelated_list_contents_and_history_when_updating = function()
+  reset_quickfix()
+  vim.fn.setqflist({}, ' ', {
+    nr = '$',
+    title = 'Unrelated list',
+    items = { { text = 'unrelated' } },
+  })
+  local unrelated_id = vim.fn.getqflist({ id = 0 }).id
+  local review_ui = ui.get_ui()
+  review_ui:show_review_files({ changed_file('original.lua', false) })
+  local review_id = review_ui.quickfix_id
+
+  review_ui:show_review_files({ changed_file('replacement.lua', true) })
+
+  local unrelated = vim.fn.getqflist({ id = unrelated_id, items = 1, nr = 0 })
+  local review = vim.fn.getqflist({ id = review_id, items = 1, context = 1, nr = 0 })
+  assert(unrelated.items[1].text == 'unrelated', 'expected unrelated list contents to be preserved')
+  assert(unrelated.nr < review.nr, 'expected unrelated quickfix history to be preserved')
+  assert(review.id == review_id, 'expected updates to retain the owned quickfix list')
+  assert(vim.deep_equal(review.context, review_ui.quickfix_context), 'expected instance context after update')
 end
 
 return M

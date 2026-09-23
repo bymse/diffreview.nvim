@@ -2,6 +2,11 @@ local M = {}
 
 ---@alias quickfix_id integer
 
+---@class QuickfixContext
+---@field plugin 'diffreview'
+---@field view 'review_files'
+---@field instance_id integer
+
 local quickfix_title = 'Diff Review'
 
 ---@class QuickfixTextInfo
@@ -66,13 +71,14 @@ local function select_quickfix_list(id)
 end
 
 ---@param id quickfix_id|nil
+---@param context QuickfixContext
 ---@param files ChangedFileViewModel[]
 ---@return quickfix_id
-function M.show_review_files(id, files)
+function M.show_review_files(id, context, files)
   local action = id == nil and ' ' or 'u'
   local properties = {
     title = quickfix_title,
-    context = { plugin = 'diffreview', view = 'review_files' },
+    context = context,
     items = create_quickfix_entries(files),
     quickfixtextfunc = format_quickfix_entries,
   }

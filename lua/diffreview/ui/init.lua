@@ -18,16 +18,18 @@ local M = {}
 
 ---@class ReviewUi
 ---@field side_by_side ReviewSideBySideState
+---@field quickfix_id quickfix_id|nil
+---@field quickfix_context QuickfixContext
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
 local next_instance_id = 0
 
----@param id quickfix_id|nil
 ---@param files ChangedFileViewModel[]
----@return quickfix_id
-function ReviewUi:show_review_files(id, files)
-  return quickfix.show_review_files(id, files)
+---@return nil
+function ReviewUi:show_review_files(files)
+  local quickfix_id = quickfix.show_review_files(self.quickfix_id, self.quickfix_context, files)
+  self.quickfix_id = quickfix_id
 end
 
 ---@param diff DiffViewModel
@@ -50,6 +52,12 @@ end
 function M.get_ui()
   next_instance_id = next_instance_id + 1
   return setmetatable({
+    quickfix_id = nil,
+    quickfix_context = {
+      plugin = 'diffreview',
+      view = 'review_files',
+      instance_id = next_instance_id,
+    },
     side_by_side = {
       instance_id = next_instance_id,
       namespace = vim.api.nvim_create_namespace('diffreview.side_by_side.' .. next_instance_id),
