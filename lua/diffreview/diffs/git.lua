@@ -4,6 +4,7 @@ local parsers = require('diffreview.diffs.parsers')
 ---@class GitResult
 ---@field ok boolean
 ---@field error string|nil
+---@field code integer|nil
 
 ---@class GitRemote
 ---@field name string
@@ -35,7 +36,7 @@ local function run_parsed(cmd, cwd, parse_output, text)
   end
 
   if result.code ~= 0 then
-    return { ok = false, error = result.stderr }
+    return { ok = false, error = result.stderr, code = result.code }
   end
 
   local success, output = pcall(parse_output, result.stdout)
@@ -73,6 +74,22 @@ local function parse_text_output(raw_out)
   return vim.split(raw_out, '\n', { plain = true })
 end
 
+---@param raw_out string
+---@return integer, integer, boolean
+local function parse_empty_source_numstat(raw_out)
+  if raw_out:sub(-1) ~= '\0' then
+    error('git empty-source numstat output expected to end with NUL')
+  end
+  local added, removed = raw_out:match('^([^\t]+)\t([^\t]+)\t')
+  if added == '-' and removed == '-' then
+    return 0, 0, true
+  end
+  if added == nil or removed == nil or not added:match('^%d+$') or removed ~= '0' then
+    error('invalid git empty-source numstat output')
+  end
+  return assert(tonumber(added)), 0, false
+end
+
 ---@param expression string
 ---@return GitResult, string|nil
 function GitRepo:rev_parse(expression)
@@ -85,6 +102,46 @@ function GitRepo:rev_parse(expression)
   }
 
   return run_parsed(cmd, self.dir, vim.trim, true)
+end
+
+---@param ref string
+---@return GitResult, string|nil
+function GitRepo:named_ref(ref)
+  return self:rev_parse(ref)
+end
+
+---@param ref string
+---@return GitResult, string|nil
+function GitRepo:symbolic_ref(ref)
+  return run_parsed({ 'git', 'symbolic-ref', '--quiet', '--', ref }, self.dir, vim.trim, true)
+end
+
+---@param first string
+---@param second string
+---@return GitResult, string|nil
+function GitRepo:merge_base(first, second)
+  return run_parsed({ 'git', 'merge-base', '--', first, second }, self.dir, vim.trim, true)
+end
+
+---@param path string
+---@return GitResult, integer|nil, integer|nil, boolean|nil
+function GitRepo:empty_source_numstat(path)
+  local started, result = pcall(
+    async.system,
+    { 'git', 'diff', '--no-index', '--numstat', '-z', '--', '/dev/null', path },
+    { cwd = self.dir, text = false }
+  )
+  if not started then
+    return { ok = false, error = tostring(result) }, nil, nil, nil
+  end
+  if result.code ~= 1 then
+    return { ok = false, error = result.stderr, code = result.code }, nil, nil, nil
+  end
+  local success, added, removed, binary = pcall(parse_empty_source_numstat, result.stdout)
+  if not success then
+    return { ok = false, error = tostring(added) }, nil, nil, nil
+  end
+  return { ok = true }, added, removed, binary
 end
 
 ---@param from_commit_oid string|nil
