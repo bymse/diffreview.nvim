@@ -28,6 +28,10 @@ local next_instance_id = 0
 ---@param files ChangedFileViewModel[]
 ---@return nil
 function ReviewUi:show_review_files(files)
+  if self.quickfix_id ~= nil and not quickfix.is_owned(self.quickfix_id, self.quickfix_context) then
+    self.quickfix_id = nil
+  end
+
   local quickfix_id = quickfix.show_review_files(self.quickfix_id, self.quickfix_context, files)
   self.quickfix_id = quickfix_id
 end
@@ -45,7 +49,12 @@ function ReviewUi:display_diff_inlinde(diff) end
 
 ---@return nil
 function ReviewUi:cleanup()
-  side_by_side.cleanup(self)
+  local ok, err = pcall(side_by_side.cleanup, self)
+  quickfix.cleanup(self.quickfix_id, self.quickfix_context)
+  self.quickfix_id = nil
+  if not ok then
+    error(err, 0)
+  end
 end
 
 ---@return ReviewUi

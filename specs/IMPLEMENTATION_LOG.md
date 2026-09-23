@@ -53,3 +53,30 @@ Important decisions:
 
 Follow-up risks:
 - Owned cleanup and transactional display rollback remain intentionally deferred to Spec 003.
+
+## 003-clean-quickfix-projection — 2026-09-23
+
+Status: PASS
+
+Changed files:
+- `lua/diffreview/ui/init.lua`
+- `lua/diffreview/ui/quickfix.lua`
+- `tests/integration/ui/quickfix_tests.lua`
+- `specs/003-clean-quickfix-projection.md`
+
+Verification:
+- `just lint` — PASS
+- `just format-check` — PASS
+- `just test-integration` — PASS (111 tests)
+- `just test` — PASS (157 tests)
+
+Judge result:
+- PASS: spec compliance 5/5, architectural fit 4/5, simplicity/YAGNI 4/5, test quality 5/5, regression risk 4/5, maintainability 4/5.
+
+Important decisions:
+- Quickfix window cleanup and rollback are limited to the current tabpage where the projection is displayed.
+- Exact context equality validates list ownership, and stale or foreign facade identities are cleared before replacement.
+- Transactional rollback restores list and selection state best-effort while preserving the original display error.
+
+Follow-up risks:
+- None.

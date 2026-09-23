@@ -34,3 +34,17 @@ Finding: Neovim retains the supplied quickfix context when an existing list is u
 Impact: A `ReviewUi` instance can own and update one projection without exposing the global quickfix identity to callers.
 Use in future specs: Validate `ReviewUi.quickfix_id` against the exact stored instance context before cleanup or update; never infer ownership from the current list.
 Source: Spec 002 implementation and integration verification.
+
+## 2026-09-23 — Transactional quickfix rollback
+
+Finding: Quickfix history lists share display state, while stable before-and-after window ID sets reliably identify a current-tab window introduced by a failed `copen`.
+Impact: Restoring the selected list before identifying the new window can hide that window and leak it after failure.
+Use in future specs: Derive rollback ownership from stable resource identities, not from globally selected quickfix state after restoration.
+Source: Spec 003 implementation and quality-review repair.
+
+## 2026-09-23 — Quickfix ownership validation
+
+Finding: Safe cleanup requires both a stable list ID and exact ownership-context equality; titles, history positions, and shared quickfix buffers are insufficient identifiers.
+Impact: Missing, stale, already-cleaned, and foreign identities can remain safe no-ops without disturbing unrelated editor state.
+Use in future specs: Preserve `ReviewUi.quickfix_id` and `quickfix_context` as the lifecycle cleanup seam.
+Source: Spec 003 cleanup integration verification.
