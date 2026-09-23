@@ -114,19 +114,17 @@ M.start_should_display_real_quickfix_and_preserve_unrelated_resources_when_stopp
   end)
 end
 
-M.start_should_notify_and_remain_idle_when_options_are_invalid_or_comparison_is_empty = function()
+M.start_should_notify_and_remain_idle_when_comparison_is_empty = function()
   with_review_mocks(function(notifications, _, session)
     diffs_adapter.load_review = function(options)
       assert(options.cwd == nil, 'expected review to preserve cwd fallback for the loader')
       return loaded_result()
     end
-    session:start({ to = 'HEAD' })
     session:start({})
     session:stop()
-    assert(#notifications == 3, 'expected invalid, empty, and idle notifications')
-    assert(notifications[1].level == vim.log.levels.ERROR, 'expected invalid options error')
-    assert(notifications[2].level == vim.log.levels.INFO, 'expected empty comparison info')
-    assert(notifications[3].level == vim.log.levels.INFO, 'expected idle stop info')
+    assert(#notifications == 2, 'expected empty and idle notifications')
+    assert(notifications[1].level == vim.log.levels.INFO, 'expected empty comparison info')
+    assert(notifications[2].level == vim.log.levels.INFO, 'expected idle stop info')
   end)
 end
 

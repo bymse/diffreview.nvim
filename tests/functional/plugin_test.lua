@@ -19,6 +19,11 @@ return {
       table.insert(notifications, { message = message, level = level })
     end
     local ok, err = xpcall(function()
+      diffreview.start({ to = 'HEAD' })
+      assert(
+        #notifications == 1 and notifications[1].message == 'Invalid review start options',
+        'expected public start validation error'
+      )
       git_repo.with_repo(function(repo)
         repo:write_file('file.txt', { 'base' })
         repo:add('file.txt')
@@ -38,7 +43,7 @@ return {
           local quickfix_id = vim.fn.getqflist({ id = 0 }).id
           vim.cmd('ReviewStart one two three')
           assert(
-            #notifications == 1 and notifications[1].level == vim.log.levels.ERROR,
+            #notifications == 2 and notifications[2].level == vim.log.levels.ERROR,
             'expected one command validation error'
           )
           assert(vim.fn.getqflist({ id = 0 }).id == quickfix_id, 'expected active review to remain unchanged')
@@ -46,7 +51,7 @@ return {
             vim.cmd('ReviewStop unexpected')
           end)
           assert(not stopped and stop_error ~= nil, 'expected native command arity error')
-          assert(#notifications == 1, 'expected no plugin notification from invalid ReviewStop')
+          assert(#notifications == 2, 'expected no plugin notification from invalid ReviewStop')
           assert(vim.fn.getqflist({ id = 0 }).id == quickfix_id, 'expected invalid stop to preserve active review')
           vim.cmd('ReviewStop')
         end, debug.traceback)

@@ -1,25 +1,5 @@
 local M = {}
 
----@class AsyncOperation
----@field canceled boolean
-
----@return AsyncOperation
-function M.new_operation()
-  return { canceled = false }
-end
-
----@param operation AsyncOperation
----@return nil
-function M.cancel(operation)
-  operation.canceled = true
-end
-
----@param operation AsyncOperation|nil
----@return boolean
-function M.is_canceled(operation)
-  return operation ~= nil and operation.canceled
-end
-
 ---@param cmd string[]
 ---@param opts vim.SystemOpts|nil
 ---@return vim.SystemCompleted

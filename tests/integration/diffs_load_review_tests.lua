@@ -1,5 +1,5 @@
 local diffs = require('diffreview.diffs')
-local async = require('diffreview.async')
+local async_operation = require('diffreview.async_operation')
 local git = require('diffreview.diffs.git')
 local git_repo = require('helpers.git_repo')
 local M = {}
@@ -562,7 +562,7 @@ M.load_review_should_stop_revision_resolution_when_operation_is_canceled = funct
     repo:write_file('tracked.txt', { 'base' })
     repo:add('tracked.txt')
     repo:commit('base')
-    local operation = async.new_operation()
+    local operation = async_operation.new()
     ---@type any
     local git_adapter = git
     local original_get_repo = git_adapter.get_repo
@@ -573,7 +573,7 @@ M.load_review_should_stop_revision_resolution_when_operation_is_canceled = funct
       git_repository.rev_parse = function(self, ref)
         rev_parse_calls = rev_parse_calls + 1
         local result, oid = original_rev_parse(self, ref)
-        async.cancel(operation)
+        async_operation.cancel(operation)
         return result, oid
       end
       return git_repository
@@ -596,7 +596,7 @@ M.load_review_should_stop_untracked_file_inspection_when_operation_is_canceled =
     repo:commit('base')
     repo:write_file('first.txt', { 'first' })
     repo:write_file('second.txt', { 'second' })
-    local operation = async.new_operation()
+    local operation = async_operation.new()
     ---@type any
     local git_adapter = git
     local original_get_repo = git_adapter.get_repo
@@ -607,7 +607,7 @@ M.load_review_should_stop_untracked_file_inspection_when_operation_is_canceled =
       git_repository.untracked_file_stats = function(self, path)
         inspection_calls = inspection_calls + 1
         local result, added, removed, binary = original_untracked_file_stats(self, path)
-        async.cancel(operation)
+        async_operation.cancel(operation)
         return result, added, removed, binary
       end
       return git_repository
