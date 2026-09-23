@@ -31,7 +31,7 @@ return {
           assert(
             vim.wait(1000, function()
               local quickfix = vim.fn.getqflist({ context = 0, id = 0 })
-              return type(quickfix.context) == 'table' and quickfix.context.plugin == 'diffreview'
+              return type(quickfix.context) == 'string' and quickfix.context:match('^diffreview:files:') ~= nil
             end),
             'expected command cwd review to become active'
           )

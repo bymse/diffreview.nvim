@@ -19,27 +19,28 @@ local function is_owned(resource, getter, instance_id)
 end
 
 ---@param state ReviewSideBySideState
+---@param instance_id integer
 ---@return boolean
-local function has_owned_tab(state)
+local function has_owned_tab(state, instance_id)
   return state.tabpage ~= nil
     and vim.api.nvim_tabpage_is_valid(state.tabpage)
-    and is_owned(state.tabpage, vim.api.nvim_tabpage_get_var, state.instance_id)
+    and is_owned(state.tabpage, vim.api.nvim_tabpage_get_var, instance_id)
 end
 
 ---@param state ReviewSideBySideState
 ---@param window integer|nil
+---@param instance_id integer
 ---@return boolean
-local function has_owned_window(state, window)
-  return window ~= nil
-    and vim.api.nvim_win_is_valid(window)
-    and is_owned(window, vim.api.nvim_win_get_var, state.instance_id)
+local function has_owned_window(state, window, instance_id)
+  return window ~= nil and vim.api.nvim_win_is_valid(window) and is_owned(window, vim.api.nvim_win_get_var, instance_id)
 end
 
 ---@param state ReviewSideBySideState
+---@param instance_id integer
 ---@param release_active boolean
 ---@param active_window_lost boolean
 ---@return NativeDiffTransition
-local function clear_previous_presentation(state, release_active, active_window_lost)
+local function clear_previous_presentation(state, instance_id, release_active, active_window_lost)
   if state.decorated_buffer ~= nil and vim.api.nvim_buf_is_valid(state.decorated_buffer) then
     decorations.clear(state.decorated_buffer, state.namespace)
   end
@@ -47,7 +48,7 @@ local function clear_previous_presentation(state, release_active, active_window_
 
   local diff_windows = {}
   for _, window in ipairs({ state.main_window, state.companion_window }) do
-    if has_owned_window(state, window) then
+    if has_owned_window(state, window, instance_id) then
       statusline.clear(window)
       table.insert(diff_windows, window)
     end
@@ -56,21 +57,22 @@ local function clear_previous_presentation(state, release_active, active_window_
 end
 
 ---@param state ReviewSideBySideState
+---@param instance_id integer
 ---@param layout ViewLayout
-local function ensure_review_window(state, layout)
-  if not has_owned_tab(state) then
+local function ensure_review_window(state, instance_id, layout)
+  if not has_owned_tab(state, instance_id) then
     state.tabpage = nil
     state.main_window = nil
     state.companion_window = nil
     vim.cmd('tabnew')
     state.tabpage = vim.api.nvim_get_current_tabpage()
-    vim.api.nvim_tabpage_set_var(state.tabpage, owner_variable, state.instance_id)
+    vim.api.nvim_tabpage_set_var(state.tabpage, owner_variable, instance_id)
   else
     vim.api.nvim_set_current_tabpage(state.tabpage)
   end
 
-  if not has_owned_window(state, state.main_window) then
-    if has_owned_window(state, state.companion_window) then
+  if not has_owned_window(state, state.main_window, instance_id) then
+    if has_owned_window(state, state.companion_window, instance_id) then
       local split = layout == 'vertical' and 'right' or 'below'
       state.main_window = vim.api.nvim_open_win(0, true, { win = state.companion_window, split = split })
     elseif state.main_window == nil then
@@ -80,13 +82,14 @@ local function ensure_review_window(state, layout)
       local anchor = vim.api.nvim_get_current_win()
       state.main_window = vim.api.nvim_open_win(0, true, { win = anchor, split = 'below' })
     end
-    vim.api.nvim_win_set_var(state.main_window, owner_variable, state.instance_id)
+    vim.api.nvim_win_set_var(state.main_window, owner_variable, instance_id)
   end
 end
 
 ---@param state ReviewSideBySideState
-local function dispose_companion(state)
-  if has_owned_window(state, state.companion_window) then
+---@param instance_id integer
+local function dispose_companion(state, instance_id)
+  if has_owned_window(state, state.companion_window, instance_id) then
     vim.api.nvim_win_close(state.companion_window, false)
   end
   state.companion_window = nil
@@ -104,36 +107,38 @@ end
 
 ---@param state ReviewSideBySideState
 ---@param content DiffFileContent
+---@param instance_id integer
 ---@return integer
-local function main_content_buffer(state, content)
+local function main_content_buffer(state, content, instance_id)
   if content.kind == 'binary' then
     error('binary content cannot be rendered as text')
   end
   if content.source == 'path' then
     return path_buffer(content)
   end
-  local buffer = scratch_buffer.snapshot(state.instance_id, state.main_snapshot_buffer, 'main-snapshot', content)
+  local buffer = scratch_buffer.snapshot(instance_id, state.main_snapshot_buffer, 'main-snapshot', content)
   state.main_snapshot_buffer = buffer
   return buffer
 end
 
 ---@param state ReviewSideBySideState
 ---@param content DiffSnapshotTextContent
+---@param instance_id integer
 ---@return integer
-local function companion_content_buffer(state, content)
-  local buffer =
-    scratch_buffer.snapshot(state.instance_id, state.companion_snapshot_buffer, 'companion-snapshot', content)
+local function companion_content_buffer(state, content, instance_id)
+  local buffer = scratch_buffer.snapshot(instance_id, state.companion_snapshot_buffer, 'companion-snapshot', content)
   state.companion_snapshot_buffer = buffer
   return buffer
 end
 
 ---@param state ReviewSideBySideState
+---@param instance_id integer
 ---@param layout ViewLayout
 ---@return integer
-local function open_companion_window(state, layout)
+local function open_companion_window(state, instance_id, layout)
   local split = layout == 'vertical' and 'left' or 'above'
   local window = vim.api.nvim_open_win(0, false, { win = state.main_window, split = split })
-  vim.api.nvim_win_set_var(window, owner_variable, state.instance_id)
+  vim.api.nvim_win_set_var(window, owner_variable, instance_id)
   state.companion_window = window
   return window
 end
@@ -162,28 +167,29 @@ function M.display_side_by_side(ui, diff, layout)
     error('Invalid view layout: ' .. tostring(layout))
   end
   local state = ui.side_by_side
+  local instance_id = ui.instance_id
   local will_use_two_windows = is_reserved_two_window(diff) and not has_binary_version(diff)
   local active_window_lost = state.native_diff.active
     and (
-      not has_owned_tab(state)
-      or not has_owned_window(state, state.main_window)
-      or not has_owned_window(state, state.companion_window)
+      not has_owned_tab(state, instance_id)
+      or not has_owned_window(state, state.main_window, instance_id)
+      or not has_owned_window(state, state.companion_window, instance_id)
     )
-  local owned_tab = has_owned_tab(state)
+  local owned_tab = has_owned_tab(state, instance_id)
   local release_active = not owned_tab or not will_use_two_windows or active_window_lost
-  local native_diff_transition = clear_previous_presentation(state, release_active, active_window_lost)
+  local native_diff_transition = clear_previous_presentation(state, instance_id, release_active, active_window_lost)
   if not owned_tab then
     state.tabpage = nil
     state.main_window = nil
     state.companion_window = nil
   else
     if not will_use_two_windows or (state.active_layout ~= nil and state.active_layout ~= layout) then
-      dispose_companion(state)
-    elseif not has_owned_window(state, state.companion_window) then
+      dispose_companion(state, instance_id)
+    elseif not has_owned_window(state, state.companion_window, instance_id) then
       state.companion_window = nil
     end
   end
-  ensure_review_window(state, layout)
+  ensure_review_window(state, instance_id, layout)
 
   local buffer
   local old_buffer
@@ -194,24 +200,24 @@ function M.display_side_by_side(ui, diff, layout)
     or (diff.operation == 'modified' and not diff.content_changed)
   then
     buffer = scratch_buffer.information(
-      state.instance_id,
+      instance_id,
       state.information_buffer,
       'main-information',
       diff_information.lines(diff)
     )
     state.information_buffer = buffer
   elseif diff.operation == 'added' or diff.operation == 'untracked' then
-    buffer = main_content_buffer(state, diff.current.content)
+    buffer = main_content_buffer(state, diff.current.content, instance_id)
   elseif diff.operation == 'deleted' then
-    buffer = main_content_buffer(state, diff.old.content)
+    buffer = main_content_buffer(state, diff.old.content, instance_id)
   elseif diff.operation == 'unmerged' then
-    buffer = main_content_buffer(state, diff.current.content)
+    buffer = main_content_buffer(state, diff.current.content, instance_id)
   else
-    buffer = main_content_buffer(state, diff.current.content)
+    buffer = main_content_buffer(state, diff.current.content, instance_id)
     if will_use_two_windows then
       local old_content = diff.old.content
       ---@cast old_content DiffSnapshotTextContent
-      old_buffer = companion_content_buffer(state, old_content)
+      old_buffer = companion_content_buffer(state, old_content, instance_id)
     end
   end
 
@@ -219,8 +225,8 @@ function M.display_side_by_side(ui, diff, layout)
   statusline.set(state.main_window, diff)
   if old_buffer ~= nil then
     local companion = state.companion_window
-    if not has_owned_window(state, companion) then
-      companion = open_companion_window(state, layout)
+    if not has_owned_window(state, companion, instance_id) then
+      companion = open_companion_window(state, instance_id, layout)
     end
     ---@cast companion integer
     vim.api.nvim_win_set_buf(companion, old_buffer)
@@ -238,15 +244,16 @@ end
 ---@return nil
 function M.cleanup(ui)
   local state = ui.side_by_side
+  local instance_id = ui.instance_id
   local active_window_lost = state.native_diff.active
     and (
-      not has_owned_tab(state)
-      or not has_owned_window(state, state.main_window)
-      or not has_owned_window(state, state.companion_window)
+      not has_owned_tab(state, instance_id)
+      or not has_owned_window(state, state.main_window, instance_id)
+      or not has_owned_window(state, state.companion_window, instance_id)
     )
-  clear_previous_presentation(state, true, active_window_lost)
+  clear_previous_presentation(state, instance_id, true, active_window_lost)
 
-  if has_owned_tab(state) then
+  if has_owned_tab(state, instance_id) then
     local review_tab = state.tabpage
     ---@cast review_tab integer
     local return_tab = vim.api.nvim_get_current_tabpage()
@@ -266,7 +273,7 @@ function M.cleanup(ui)
     if
       buffer ~= nil
       and vim.api.nvim_buf_is_valid(buffer)
-      and is_owned(buffer, vim.api.nvim_buf_get_var, state.instance_id)
+      and is_owned(buffer, vim.api.nvim_buf_get_var, instance_id)
     then
       vim.api.nvim_buf_delete(buffer, { force = true })
     end

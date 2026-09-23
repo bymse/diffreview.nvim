@@ -116,8 +116,8 @@ M.display_side_by_side_should_isolate_multiple_instance_namespaces_and_scratch_n
   assert(first_name ~= second_name, 'expected distinct scratch names')
   assert(first_name:match('^diffreview://%d+/main%-snapshot$') ~= nil, 'expected stable scratch name')
   local owner_variable = 'diffreview_side_by_side_owner'
-  local first_owner = first_ui.side_by_side.instance_id
-  local second_owner = second_ui.side_by_side.instance_id
+  local first_owner = first_ui.instance_id
+  local second_owner = second_ui.instance_id
   assert(
     vim.api.nvim_tabpage_get_var(first_ui.side_by_side.tabpage, owner_variable) == first_owner,
     'expected first tab ownership'

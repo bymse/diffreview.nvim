@@ -41,25 +41,6 @@ local function current_quickfix_window()
   end
 end
 
----@param predicate fun(string): boolean
----@param callback fun()
-local function with_failing_command(predicate, callback)
-  local original = vim.cmd
-  vim.cmd = function(command)
-    if predicate(command) then
-      original(command)
-      error('injected display failure')
-    end
-    return original(command)
-  end
-
-  local ok, err = xpcall(callback, debug.traceback)
-  vim.cmd = original
-  if not ok then
-    error(err, 0)
-  end
-end
-
 ---@return integer
 local function create_unrelated_list()
   vim.fn.setqflist({}, ' ', {
@@ -69,13 +50,6 @@ local function create_unrelated_list()
     context = { plugin = 'other' },
   })
   return vim.fn.getqflist({ id = 0 }).id
-end
-
----@param ok boolean
----@param err unknown
-local function assert_injected_display_error(ok, err)
-  assert(not ok, 'expected injected display failure')
-  assert(tostring(err):match('injected display failure'), 'expected caller to receive the original display error')
 end
 
 M.show_review_files_should_display_viewed_and_unviewed_files_when_creating_list = function()
@@ -166,7 +140,7 @@ M.show_review_files_should_store_exact_instance_context_when_creating_list = fun
   review_ui:show_review_files({ changed_file('owned.lua', false) })
 
   local context = vim.fn.getqflist({ id = review_ui.quickfix_id, context = 1 }).context
-  assert(vim.deep_equal(context, review_ui.quickfix_context), 'expected exact instance ownership context')
+  assert(context == 'diffreview:files:' .. review_ui.instance_id, 'expected exact instance ownership context')
 end
 
 M.show_review_files_should_preserve_unrelated_list_contents_and_history_when_updating = function()
@@ -188,7 +162,7 @@ M.show_review_files_should_preserve_unrelated_list_contents_and_history_when_upd
   assert(unrelated.items[1].text == 'unrelated', 'expected unrelated list contents to be preserved')
   assert(unrelated.nr < review.nr, 'expected unrelated quickfix history to be preserved')
   assert(review.id == review_id, 'expected updates to retain the owned quickfix list')
-  assert(vim.deep_equal(review.context, review_ui.quickfix_context), 'expected instance context after update')
+  assert(review.context == 'diffreview:files:' .. review_ui.instance_id, 'expected instance context after update')
 end
 
 M.cleanup_should_empty_owned_list_and_close_only_owned_current_tab_window = function()
@@ -212,7 +186,7 @@ M.cleanup_should_empty_owned_list_and_close_only_owned_current_tab_window = func
   local owned = quickfix_list(owned_id)
   assert(#owned.items == 0, 'expected owned list to be emptied')
   assert(owned.title == 'Diff Review', 'expected owned list title to remain unchanged')
-  assert(vim.deep_equal(owned.context, review_ui.quickfix_context), 'expected owned context to remain unchanged')
+  assert(owned.context == 'diffreview:files:' .. review_ui.instance_id, 'expected owned context to remain unchanged')
   assert(current_quickfix_window() == nil, 'expected owned current-tab quickfix window to close')
   vim.api.nvim_set_current_tabpage(vim.api.nvim_win_get_tabpage(foreign_window))
   assert(vim.api.nvim_win_is_valid(foreign_window), 'expected foreign-tab quickfix window to remain open')
@@ -225,7 +199,9 @@ M.cleanup_should_preserve_foreign_context_when_identity_is_reused = function()
   review_ui:show_review_files({ changed_file('owned.lua', false) })
   local owned_id = review_ui.quickfix_id
   ---@cast owned_id integer
-  vim.fn.setqflist({}, 'u', { id = owned_id, context = { plugin = 'other' } })
+  ---@type any
+  local properties = { id = owned_id, context = 'other' }
+  vim.fn.setqflist({}, 'u', properties)
 
   review_ui:cleanup()
 
@@ -279,100 +255,6 @@ M.show_review_files_should_replace_stale_or_foreign_stored_id_without_mutating_f
   review_ui.quickfix_id = 999999
   review_ui:show_review_files({ changed_file('stale.lua', false) })
   assert(review_ui.quickfix_id ~= 999999, 'expected stale identity to be replaced')
-end
-
-M.show_review_files_should_restore_existing_list_when_selection_fails = function()
-  reset_quickfix()
-  local review_ui = ui.get_ui()
-  review_ui:show_review_files({ changed_file('original.lua', false) })
-  local owned_id = review_ui.quickfix_id
-  ---@cast owned_id integer
-  local original = quickfix_list(owned_id)
-  local foreign_id = create_unrelated_list()
-
-  with_failing_command(function(command)
-    return command:match('colder$') ~= nil
-  end, function()
-    local ok, err = pcall(review_ui.show_review_files, review_ui, { changed_file('replacement.lua', true) })
-    assert_injected_display_error(ok, err)
-  end)
-
-  assert(review_ui.quickfix_id == owned_id, 'expected failed owned update to retain identity')
-  local restored = quickfix_list(owned_id)
-  assert(restored.items[1].text:match('original.lua'), 'expected owned items to be restored')
-  assert(restored.title == original.title, 'expected owned title to be restored')
-  assert(vim.deep_equal(restored.context, original.context), 'expected owned context to be restored')
-  assert(restored.quickfixtextfunc == original.quickfixtextfunc, 'expected text formatter to be restored')
-  assert(vim.fn.getqflist({ id = 0 }).id == foreign_id, 'expected prior selected list to be restored')
-end
-
-M.show_review_files_should_restore_preexisting_window_when_open_fails = function()
-  reset_quickfix()
-  local foreign_id = create_unrelated_list()
-  vim.cmd('botright copen')
-  local foreign_window = current_quickfix_window()
-  ---@cast foreign_window integer
-  local foreign_buffer = quickfix_list(foreign_id).qfbufnr
-  local review_ui = ui.get_ui()
-  review_ui.quickfix_id = foreign_id
-
-  with_failing_command(function(command)
-    return command == 'botright copen'
-  end, function()
-    local ok, err = pcall(review_ui.show_review_files, review_ui, { changed_file('owned.lua', false) })
-    assert_injected_display_error(ok, err)
-  end)
-
-  assert(review_ui.quickfix_id == nil, 'expected failed replacement to retain no identity')
-  assert(vim.api.nvim_win_is_valid(foreign_window), 'expected pre-existing quickfix window to remain open')
-  assert(vim.api.nvim_win_get_buf(foreign_window) == foreign_buffer, 'expected pre-existing window list to be restored')
-  assert(quickfix_list(foreign_id).items[1].text == 'unrelated', 'expected foreign list to remain unchanged')
-end
-
-M.show_review_files_should_close_new_window_when_open_fails = function()
-  reset_quickfix()
-  local foreign_id = create_unrelated_list()
-  local current_tab = vim.api.nvim_get_current_tabpage()
-  vim.cmd('tabnew')
-  vim.cmd('botright copen')
-  local other_tab_window = current_quickfix_window()
-  ---@cast other_tab_window integer
-  vim.api.nvim_set_current_tabpage(current_tab)
-  local review_ui = ui.get_ui()
-
-  with_failing_command(function(command)
-    return command == 'botright copen'
-  end, function()
-    local ok, err = pcall(review_ui.show_review_files, review_ui, { changed_file('owned.lua', false) })
-    assert_injected_display_error(ok, err)
-  end)
-
-  assert(review_ui.quickfix_id == nil, 'expected failed replacement to retain no identity')
-  assert(current_quickfix_window() == nil, 'expected newly opened quickfix window to close')
-  assert(vim.fn.getqflist({ id = 0 }).id == foreign_id, 'expected valid prior list selection to be restored')
-  vim.api.nvim_set_current_tabpage(vim.api.nvim_win_get_tabpage(other_tab_window))
-  assert(vim.api.nvim_win_is_valid(other_tab_window), 'expected other-tab quickfix window to remain untouched')
-end
-
-M.show_review_files_should_close_new_window_and_restore_selected_owned_list_when_update_fails = function()
-  reset_quickfix()
-  local review_ui = ui.get_ui()
-  review_ui:show_review_files({ changed_file('original.lua', false) })
-  local owned_id = review_ui.quickfix_id
-  ---@cast owned_id integer
-  vim.cmd('cclose')
-
-  with_failing_command(function(command)
-    return command == 'botright copen'
-  end, function()
-    local ok, err = pcall(review_ui.show_review_files, review_ui, { changed_file('replacement.lua', true) })
-    assert_injected_display_error(ok, err)
-  end)
-
-  assert(review_ui.quickfix_id == owned_id, 'expected failed owned update to retain identity')
-  assert(current_quickfix_window() == nil, 'expected newly opened quickfix window to close')
-  assert(vim.fn.getqflist({ id = 0 }).id == owned_id, 'expected selected owned list to be restored')
-  assert(quickfix_list(owned_id).items[1].text:match('original.lua'), 'expected owned items to be restored')
 end
 
 return M

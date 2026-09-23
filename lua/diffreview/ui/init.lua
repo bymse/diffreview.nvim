@@ -4,7 +4,6 @@ local side_by_side = require('diffreview.ui.side_by_side')
 local M = {}
 
 ---@class ReviewSideBySideState
----@field instance_id integer
 ---@field namespace integer
 ---@field tabpage integer|nil
 ---@field main_window integer|nil
@@ -17,9 +16,9 @@ local M = {}
 ---@field native_diff NativeDiffState
 
 ---@class ReviewUi
+---@field instance_id integer
 ---@field side_by_side ReviewSideBySideState
 ---@field quickfix_id quickfix_id|nil
----@field quickfix_context QuickfixContext
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
@@ -28,12 +27,7 @@ local next_instance_id = 0
 ---@param files ChangedFileViewModel[]
 ---@return nil
 function ReviewUi:show_review_files(files)
-  if self.quickfix_id ~= nil and not quickfix.is_owned(self.quickfix_id, self.quickfix_context) then
-    self.quickfix_id = nil
-  end
-
-  local quickfix_id = quickfix.show_review_files(self.quickfix_id, self.quickfix_context, files)
-  self.quickfix_id = quickfix_id
+  self.quickfix_id = quickfix.show_review_files(self.quickfix_id, self.instance_id, files)
 end
 
 ---@param diff DiffViewModel
@@ -50,7 +44,7 @@ function ReviewUi:display_diff_inlinde(diff) end
 ---@return nil
 function ReviewUi:cleanup()
   local ok, err = pcall(side_by_side.cleanup, self)
-  quickfix.cleanup(self.quickfix_id, self.quickfix_context)
+  quickfix.cleanup(self.quickfix_id, self.instance_id)
   self.quickfix_id = nil
   if not ok then
     error(err, 0)
@@ -61,14 +55,9 @@ end
 function M.get_ui()
   next_instance_id = next_instance_id + 1
   return setmetatable({
+    instance_id = next_instance_id,
     quickfix_id = nil,
-    quickfix_context = {
-      plugin = 'diffreview',
-      view = 'review_files',
-      instance_id = next_instance_id,
-    },
     side_by_side = {
-      instance_id = next_instance_id,
       namespace = vim.api.nvim_create_namespace('diffreview.side_by_side.' .. next_instance_id),
       tabpage = nil,
       main_window = nil,

@@ -134,3 +134,30 @@ Verification:
 
 Follow-up risks:
 - In-flight system calls are not terminated; their results are ignored at the next loader or lifecycle boundary after cancellation.
+
+## Branch review follow-up — 2026-09-23
+
+Status: PASS
+
+Changes:
+- Replaced the module-level review singleton with `ReviewSession` objects created by `review.new(config)`; public setup and commands now start and stop one specific session.
+- Moved setup-option normalization and validation into `config.lua`.
+- Added direct `ReviewStart` command arity validation because Neovim has no native zero-to-two argument declaration.
+- Moved the shared UI `instance_id` to `ReviewUi`; quickfix rebuilds `diffreview:files:<instance_id>` contexts internally and validates incoming list IDs before updating them.
+- Removed transactional quickfix display rollback while retaining exact ownership checks and targeted cleanup.
+- Removed the redundant `GitRepo:named_ref` wrapper and used `rev_parse` directly.
+- Deleted the integration plugin test and retained plugin command coverage in the functional suite.
+
+Verification:
+- `just lint` — PASS
+- `just format-check` — PASS
+- `just test` — PASS (162 tests)
+
+Important decisions:
+- Review lifecycle state belongs to an explicit session object rather than module-global state.
+- `ReviewUi.instance_id` identifies the whole UI and is the ownership source for both quickfix and side-by-side resources.
+- Quickfix owns context construction and stale-ID recovery; `ReviewUi` stores only the returned list ID.
+- Quickfix display failures are allowed to propagate without restoring prior list or window state.
+
+Follow-up risks:
+- A failure after quickfix mutation may leave the newly selected list or opened window visible; this is accepted to keep display orchestration simple.

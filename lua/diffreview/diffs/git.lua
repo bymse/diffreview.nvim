@@ -107,12 +107,6 @@ end
 
 ---@param ref string
 ---@return GitResult, string|nil
-function GitRepo:named_ref(ref)
-  return self:rev_parse(ref)
-end
-
----@param ref string
----@return GitResult, string|nil
 function GitRepo:symbolic_ref(ref)
   return run_parsed({ 'git', 'symbolic-ref', '--quiet', '--', ref }, self.dir, vim.trim, true)
 end

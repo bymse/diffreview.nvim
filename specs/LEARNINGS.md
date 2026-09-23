@@ -46,14 +46,14 @@ Source: Spec 003 implementation and quality-review repair.
 
 Finding: Safe cleanup requires both a stable list ID and exact ownership-context equality; titles, history positions, and shared quickfix buffers are insufficient identifiers.
 Impact: Missing, stale, already-cleaned, and foreign identities can remain safe no-ops without disturbing unrelated editor state.
-Use in future specs: Preserve `ReviewUi.quickfix_id` and `quickfix_context` as the lifecycle cleanup seam.
+Use in future specs: Preserve `ReviewUi.quickfix_id` and derive the ownership context from top-level `ReviewUi.instance_id`; do not store duplicate context state.
 Source: Spec 003 cleanup integration verification.
 
 ## 2026-09-23 — Cancellable review lifecycle
 
 Finding: Marking an async operation canceled before process termination and checking operation identity at lifecycle commit points prevents late callbacks from reactivating stopped work.
 Impact: Cancellation can remain independent of validated diff options while propagating consistently through Git and loader results.
-Use in future specs: Retain the operation on `GitRepo`, map cancellation without diagnostic detail, and guard every UI creation or active-state commit.
+Use in future specs: Retain the operation on `ReviewSession`, pass it only to orchestration-level loaders, map cancellation without diagnostic detail, and guard every UI creation or active-state commit.
 Source: Spec 004 implementation and cancellation integration tests.
 
 ## 2026-09-23 — Async completion guards
@@ -83,3 +83,38 @@ Finding: Cancellation can be checked between loader steps without coupling `asyn
 Impact: In-flight commands finish normally, while revision resolution, untracked-file inspection, and lifecycle commit boundaries prevent canceled work from progressing or becoming active.
 Use in future specs: Keep system execution cancellation-agnostic and pass cancellation state only to orchestration-level loaders.
 Source: Review comment follow-up after Spec 004.
+
+## 2026-09-23 — Explicit review sessions
+
+Finding: Review lifecycle state is clearer when `review.new(config)` returns a session that owns its configuration and `idle`, `starting`, or `active` state.
+Impact: Commands and the public API stop a specific session, tests avoid module-global teardown, and future independent sessions have an explicit boundary.
+Use in future specs: Add lifecycle behavior to `ReviewSession`; keep `init.lua` limited to setup, command adaptation, and delegation.
+Source: Branch review follow-up.
+
+## 2026-09-23 — Shared UI instance identity
+
+Finding: The ownership identity is a property of the whole `ReviewUi`, not of its side-by-side component.
+Impact: Quickfix and side-by-side resources share `ReviewUi.instance_id` without one component depending on another component's state.
+Use in future specs: Keep `instance_id` at the `ReviewUi` boundary and pass it into resource-specific modules.
+Source: Branch review follow-up.
+
+## 2026-09-23 — Quickfix-owned context orchestration
+
+Finding: A simple `diffreview:files:<instance_id>` string is sufficient for exact quickfix ownership checks and can be rebuilt whenever needed.
+Impact: `ReviewUi` stores only the quickfix ID, while the quickfix module validates stale or foreign IDs and creates replacements internally.
+Use in future specs: Keep quickfix ID validation, context construction, update, and cleanup inside `ui.quickfix`.
+Source: Branch review follow-up.
+
+## 2026-09-23 — Deliberately non-transactional quickfix display
+
+Finding: Full quickfix list, selection, and window rollback adds substantial machinery for rare `copen` or history-selection failures.
+Impact: Display now propagates failures directly and may leave changed quickfix UI state, while normal cleanup remains ownership-safe.
+Use in future specs: Do not restore transactional rollback unless a concrete failure mode justifies the complexity.
+Source: Branch review follow-up.
+
+## 2026-09-23 — Bounded command arguments
+
+Finding: Neovim command `nargs` cannot express zero-to-two arguments, so `ReviewStart` must use `nargs = '*'` and reject more than two arguments in its callback.
+Impact: Invalid command arity is rejected before lifecycle loading instead of being encoded as malformed review options.
+Use in future specs: Keep command-line arity validation in the command adapter and domain option validation in the session or loader.
+Source: Branch review follow-up.

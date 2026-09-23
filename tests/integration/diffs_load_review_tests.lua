@@ -566,13 +566,13 @@ M.load_review_should_stop_revision_resolution_when_operation_is_canceled = funct
     ---@type any
     local git_adapter = git
     local original_get_repo = git_adapter.get_repo
-    local named_ref_calls = 0
+    local rev_parse_calls = 0
     git_adapter.get_repo = function(cwd)
       local git_repository = original_get_repo(cwd)
-      local original_named_ref = git_repository.named_ref
-      git_repository.named_ref = function(self, ref)
-        named_ref_calls = named_ref_calls + 1
-        local result, oid = original_named_ref(self, ref)
+      local original_rev_parse = git_repository.rev_parse
+      git_repository.rev_parse = function(self, ref)
+        rev_parse_calls = rev_parse_calls + 1
+        local result, oid = original_rev_parse(self, ref)
         async.cancel(operation)
         return result, oid
       end
@@ -585,7 +585,7 @@ M.load_review_should_stop_revision_resolution_when_operation_is_canceled = funct
     assert(success, result)
     assert(not result.ok and result.error.kind == 'canceled', 'expected canceled load result')
     assert(result.error.detail == nil, 'expected canceled load without detail')
-    assert(named_ref_calls == 1, 'expected cancellation between revision candidates')
+    assert(rev_parse_calls == 1, 'expected cancellation between revision candidates')
   end)
 end
 

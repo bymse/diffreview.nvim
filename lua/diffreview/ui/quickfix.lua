@@ -2,12 +2,13 @@ local M = {}
 
 ---@alias quickfix_id integer
 
----@class QuickfixContext
----@field plugin 'diffreview'
----@field view 'review_files'
----@field instance_id integer
-
 local quickfix_title = 'Diff Review'
+
+---@param instance_id integer
+---@return string
+local function quickfix_context(instance_id)
+  return 'diffreview:files:' .. instance_id
+end
 
 ---@param id quickfix_id|nil
 ---@return table|nil
@@ -64,42 +65,12 @@ local function select_quickfix_list(id)
   end
 end
 
----@param windows table[]
----@return nil
-local function restore_windows(windows)
-  for _, window in ipairs(windows) do
-    pcall(function()
-      if window.quickfix_id ~= nil and vim.api.nvim_win_is_valid(window.id) then
-        local list = get_quickfix_list(window.quickfix_id)
-        if list ~= nil and list.qfbufnr ~= 0 then
-          vim.api.nvim_win_set_buf(window.id, list.qfbufnr)
-        end
-      end
-    end)
-  end
-end
-
----@param windows table[]
----@return nil
-local function close_new_quickfix_windows(windows)
-  local existing = {}
-  for _, window in ipairs(windows) do
-    existing[window.id] = true
-  end
-
-  for _, window in ipairs(current_tab_quickfix_windows()) do
-    if not existing[window.id] then
-      pcall(vim.api.nvim_win_close, window.id, false)
-    end
-  end
-end
-
 ---@param id quickfix_id|nil
----@param context QuickfixContext
+---@param instance_id integer
 ---@return boolean
-function M.is_owned(id, context)
+local function is_owned(id, instance_id)
   local list = get_quickfix_list(id)
-  return list ~= nil and vim.deep_equal(list.context, context)
+  return list ~= nil and list.context == quickfix_context(instance_id)
 end
 
 ---@class QuickfixTextInfo
@@ -151,18 +122,17 @@ local function create_quickfix_entries(files)
 end
 
 ---@param id quickfix_id|nil
----@param context QuickfixContext
+---@param instance_id integer
 ---@param files ChangedFileViewModel[]
 ---@return quickfix_id
-function M.show_review_files(id, context, files)
-  local previous = vim.fn.getqflist({ id = 0, nr = 0 })
-  local windows = current_tab_quickfix_windows()
-  local existing = get_quickfix_list(id)
-  local created_id = nil
+function M.show_review_files(id, instance_id, files)
+  if not is_owned(id, instance_id) then
+    id = nil
+  end
   local action = id == nil and ' ' or 'u'
   local properties = {
     title = quickfix_title,
-    context = context,
+    context = quickfix_context(instance_id),
     items = create_quickfix_entries(files),
     quickfixtextfunc = format_quickfix_entries,
   }
@@ -173,50 +143,22 @@ function M.show_review_files(id, context, files)
     properties.id = id
   end
 
-  local ok, result = xpcall(function()
-    if vim.fn.setqflist({}, action, properties) ~= 0 then
-      error('failed to update the Diff Review quickfix list')
-    end
-
-    local quickfix_id = id or vim.fn.getqflist({ id = 0 }).id
-    if id == nil then
-      created_id = quickfix_id
-    end
-    select_quickfix_list(quickfix_id)
-    vim.cmd('botright copen')
-    return quickfix_id
-  end, debug.traceback)
-
-  if ok then
-    return result
+  if vim.fn.setqflist({}, action, properties) ~= 0 then
+    error('failed to update the Diff Review quickfix list')
   end
 
-  if existing ~= nil then
-    pcall(vim.fn.setqflist, {}, 'r', {
-      id = existing.id,
-      items = existing.items,
-      title = existing.title,
-      context = existing.context,
-      quickfixtextfunc = existing.quickfixtextfunc,
-    })
-  elseif created_id ~= nil then
-    if created_id ~= 0 then
-      pcall(vim.fn.setqflist, {}, 'r', { id = created_id, items = {} })
-    end
-  end
+  local quickfix_id = id or vim.fn.getqflist({ id = 0 }).id
+  select_quickfix_list(quickfix_id)
+  vim.cmd('botright copen')
 
-  pcall(select_quickfix_list, previous.id)
-  restore_windows(windows)
-  close_new_quickfix_windows(windows)
-
-  error(result, 0)
+  return quickfix_id
 end
 
 ---@param id quickfix_id|nil
----@param context QuickfixContext
+---@param instance_id integer
 ---@return nil
-function M.cleanup(id, context)
-  if not M.is_owned(id, context) then
+function M.cleanup(id, instance_id)
+  if not is_owned(id, instance_id) then
     return
   end
 

@@ -19,20 +19,21 @@ local function loaded_result(files)
   return { ok = true, error = nil }, { files = files or {}, repo = {}, entries_by_id = {} }
 end
 
----@param run fun(notifications: { message: string, level: integer }[], fake_ui: ReviewUi)
+---@param run fun(notifications: { message: string, level: integer }[], fake_ui: ReviewUi, session: ReviewSession)
 local function with_review_mocks(run)
   local original_load_review = diffs_adapter.load_review
   local original_get_ui = ui_adapter.get_ui
   local original_notify = vim_api.notify
   local notifications = {}
   local fake_ui = { show_review_files = function() end, cleanup = function() end }
+  local session = review.new(config)
   vim_api.notify = function(message, level)
     table.insert(notifications, { message = message, level = level })
   end
   local ok, err = xpcall(function()
-    run(notifications, fake_ui)
+    run(notifications, fake_ui, session)
   end, debug.traceback)
-  review.stop()
+  session:stop()
   diffs_adapter.load_review = original_load_review
   ui_adapter.get_ui = original_get_ui
   vim_api.notify = original_notify
@@ -40,7 +41,7 @@ local function with_review_mocks(run)
 end
 
 M.start_should_display_loaded_files_and_cleanup_when_stopped = function()
-  with_review_mocks(function(notifications, fake_ui)
+  with_review_mocks(function(notifications, fake_ui, session)
     local shown
     local cleaned = 0
     diffs_adapter.load_review = function(options)
@@ -58,11 +59,11 @@ M.start_should_display_loaded_files_and_cleanup_when_stopped = function()
     ui_adapter.get_ui = function()
       return fake_ui
     end
-    review.start(config, { cwd = '/explicit', from = 'HEAD' })
+    session:start({ cwd = '/explicit', from = 'HEAD' })
     assert(shown ~= nil and #shown == 1, 'expected loaded files to be displayed')
-    review.start(config, { from = 'HEAD' })
+    session:start({ from = 'HEAD' })
     assert(#notifications == 1 and notifications[1].level == vim.log.levels.ERROR, 'expected conflict notification')
-    review.stop()
+    session:stop()
     assert(cleaned == 1, 'expected active UI cleanup')
     assert(#notifications == 2 and notifications[2].level == vim.log.levels.INFO, 'expected stop notification')
   end)
@@ -82,24 +83,27 @@ M.start_should_display_real_quickfix_and_preserve_unrelated_resources_when_stopp
     })
     local unrelated_id = vim.fn.getqflist({ id = 0 }).id
     local editor_buffer = vim.api.nvim_create_buf(false, true)
+    local session = review.new(config)
     local ok, err = xpcall(function()
       vim.api.nvim_set_current_buf(editor_buffer)
-      review.start(config, { cwd = repo.cwd, from = 'HEAD' })
+      session:start({ cwd = repo.cwd, from = 'HEAD' })
       assert(
         vim.wait(1000, function()
           local quickfix = vim.fn.getqflist({ context = 0, id = 0, items = 1 })
-          return type(quickfix.context) == 'table' and quickfix.context.plugin == 'diffreview' and #quickfix.items == 1
+          return type(quickfix.context) == 'string'
+            and quickfix.context:match('^diffreview:files:') ~= nil
+            and #quickfix.items == 1
         end),
         'expected real review quickfix projection'
       )
       local review_id = vim.fn.getqflist({ id = 0 }).id
-      review.stop()
+      session:stop()
       assert(#vim.fn.getqflist({ id = review_id, items = 1 }).items == 0, 'expected owned quickfix cleanup')
       assert(vim.fn.getqflist({ id = unrelated_id, items = 1 }).items[1].text == 'unrelated', 'expected unrelated list')
       assert(vim.api.nvim_buf_is_valid(editor_buffer), 'expected unrelated editor buffer')
     end, debug.traceback)
     local cleaned, cleanup_error = pcall(function()
-      review.stop()
+      session:stop()
       vim.cmd('silent! cclose')
       if vim.api.nvim_buf_is_valid(editor_buffer) then
         vim.api.nvim_buf_delete(editor_buffer, { force = true })
@@ -111,14 +115,14 @@ M.start_should_display_real_quickfix_and_preserve_unrelated_resources_when_stopp
 end
 
 M.start_should_notify_and_remain_idle_when_options_are_invalid_or_comparison_is_empty = function()
-  with_review_mocks(function(notifications)
+  with_review_mocks(function(notifications, _, session)
     diffs_adapter.load_review = function(options)
       assert(options.cwd == nil, 'expected review to preserve cwd fallback for the loader')
       return loaded_result()
     end
-    review.start(config, { to = 'HEAD' })
-    review.start(config, {})
-    review.stop()
+    session:start({ to = 'HEAD' })
+    session:start({})
+    session:stop()
     assert(#notifications == 3, 'expected invalid, empty, and idle notifications')
     assert(notifications[1].level == vim.log.levels.ERROR, 'expected invalid options error')
     assert(notifications[2].level == vim.log.levels.INFO, 'expected empty comparison info')
@@ -127,7 +131,7 @@ M.start_should_notify_and_remain_idle_when_options_are_invalid_or_comparison_is_
 end
 
 M.start_should_notify_once_at_error_when_ui_creation_fails = function()
-  with_review_mocks(function(notifications, fake_ui)
+  with_review_mocks(function(notifications, fake_ui, session)
     diffs_adapter.load_review = function()
       return loaded_result({
         { id = 'new:file.txt', display_path = 'file.txt', added_lines = 1, removed_lines = 0, viewed = false },
@@ -137,7 +141,7 @@ M.start_should_notify_once_at_error_when_ui_creation_fails = function()
       error('UI creation failed')
     end
 
-    review.start(config, {})
+    session:start({})
 
     assert(#notifications == 1, 'expected one UI creation notification')
     assert(notifications[1].level == vim.log.levels.ERROR, 'expected UI creation error level')
@@ -145,7 +149,7 @@ M.start_should_notify_once_at_error_when_ui_creation_fails = function()
 end
 
 M.start_should_cleanup_and_notify_once_at_error_when_projection_fails = function()
-  with_review_mocks(function(notifications, fake_ui)
+  with_review_mocks(function(notifications, fake_ui, session)
     local cleaned = 0
     diffs_adapter.load_review = function()
       return loaded_result({
@@ -162,7 +166,7 @@ M.start_should_cleanup_and_notify_once_at_error_when_projection_fails = function
       return fake_ui
     end
 
-    review.start(config, {})
+    session:start({})
 
     assert(cleaned == 1, 'expected partial UI cleanup')
     assert(#notifications == 1, 'expected one projection notification')
@@ -171,7 +175,7 @@ M.start_should_cleanup_and_notify_once_at_error_when_projection_fails = function
 end
 
 M.start_should_reject_second_start_while_loader_is_suspended = function()
-  with_review_mocks(function(notifications, fake_ui)
+  with_review_mocks(function(notifications, fake_ui, session)
     local original_system = vim_api.system
     local callback
     local ui_creations = 0
@@ -192,12 +196,12 @@ M.start_should_reject_second_start_while_loader_is_suspended = function()
       return fake_ui
     end
     local ok, err = xpcall(function()
-      review.start(config, {})
-      review.start(config, {})
+      session:start({})
+      session:start({})
       assert(#notifications == 1, 'expected one conflicting-start notification')
       assert(notifications[1].level == vim.log.levels.ERROR, 'expected conflicting-start error level')
       assert(ui_creations == 0 and callback ~= nil, 'expected suspended loader without replacement')
-      review.stop()
+      session:stop()
       callback({ code = 0, signal = 0, stdout = '', stderr = '' })
       assert(
         vim.wait(1000, function()
@@ -212,7 +216,7 @@ M.start_should_reject_second_start_while_loader_is_suspended = function()
 end
 
 M.start_should_complete_lifecycle_once_when_process_callback_is_repeated = function()
-  with_review_mocks(function(notifications, fake_ui)
+  with_review_mocks(function(notifications, fake_ui, session)
     local original_system = vim_api.system
     local ok, err = xpcall(function()
       local callback
@@ -233,7 +237,7 @@ M.start_should_complete_lifecycle_once_when_process_callback_is_repeated = funct
       ui_adapter.get_ui = function()
         return fake_ui
       end
-      review.start(config, {})
+      session:start({})
       assert(callback ~= nil, 'expected suspended process callback')
       callback({ code = 0, signal = 0, stdout = '', stderr = '' })
       callback({ code = 0, signal = 0, stdout = '', stderr = '' })
@@ -252,7 +256,7 @@ M.start_should_complete_lifecycle_once_when_process_callback_is_repeated = funct
 end
 
 M.stop_should_suppress_late_start_completion_without_canceling_system_call = function()
-  with_review_mocks(function(notifications)
+  with_review_mocks(function(notifications, _, session)
     local original_system = vim_api.system
     local ok, err = xpcall(function()
       local callback
@@ -273,8 +277,8 @@ M.stop_should_suppress_late_start_completion_without_canceling_system_call = fun
           { id = 'new:file.txt', display_path = 'file.txt', added_lines = 1, removed_lines = 0, viewed = false },
         })
       end
-      review.start(config, {})
-      review.stop()
+      session:start({})
+      session:stop()
       assert(not killed and callback ~= nil, 'expected system call to remain independent of cancellation')
       callback({ code = 0, signal = 0, stdout = '', stderr = '' })
       assert(

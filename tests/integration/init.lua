@@ -5,7 +5,6 @@ return {
   'integration.git_rev_parse_tests',
   'integration.git_repo_meta_tests',
   'integration.diffs_load_review_tests',
-  'integration.plugin_test',
   'integration.review_tests',
   'integration.ui.quickfix_tests',
   'integration.ui.statusline_tests',

@@ -93,7 +93,7 @@ end
 local function resolve_revision(repo, expression, exact, operation)
   local candidates = {}
   if expression:match('^refs/heads/') or expression:match('^refs/remotes/') or expression:match('^refs/tags/') then
-    local result, oid = repo:named_ref(expression)
+    local result, oid = repo:rev_parse(expression)
     if async.is_canceled(operation) then
       return nil, nil, nil
     end
@@ -108,7 +108,7 @@ local function resolve_revision(repo, expression, exact, operation)
     return nil, nil, nil
   elseif not expression:match('^refs/') then
     for _, prefix in ipairs({ 'refs/heads/', 'refs/remotes/', 'refs/tags/' }) do
-      local result, oid = repo:named_ref(prefix .. expression)
+      local result, oid = repo:rev_parse(prefix .. expression)
       if async.is_canceled(operation) then
         return nil, nil, nil
       end
