@@ -1,4 +1,5 @@
 local file_mode = require('diffreview.file_mode')
+local file_utils = require('diffreview.file_utils')
 local async_operation = require('diffreview.async_operation')
 local git = require('diffreview.diffs.git')
 local status = require('diffreview.diffs.status')
@@ -69,20 +70,6 @@ local function validate_options(options)
     return nil, failure('invalid_options', nil)
   end
   return options, nil
-end
-
----@param path string
----@return boolean, string|nil
-local function can_access_directory(path)
-  local readable, read_error = vim.uv.fs_access(path, 'R')
-  if not readable then
-    return false, read_error or 'unable to read cwd'
-  end
-  local traversable, traverse_error = vim.uv.fs_access(path, 'X')
-  if not traversable then
-    return false, traverse_error or 'unable to traverse cwd'
-  end
-  return true, nil
 end
 
 ---@param repo GitRepo
@@ -166,17 +153,9 @@ function M.load_review(options, operation)
     return validation_failure, nil
   end
   local cwd = valid_options.cwd or vim.fn.getcwd()
-  local stat = vim.uv.fs_stat(cwd)
-  if stat == nil or stat.type ~= 'directory' then
-    return failure('filesystem', 'unable to access cwd: ' .. cwd)
-  end
-  local accessible, access_error = can_access_directory(cwd)
-  if not accessible then
-    return failure('filesystem', access_error)
-  end
-  local root_path = vim.uv.fs_realpath(cwd)
+  local root_path, access_error = file_utils.ensure_accessible_directory(cwd)
   if root_path == nil then
-    return failure('filesystem', 'unable to access cwd: ' .. cwd)
+    return failure('filesystem', access_error)
   end
   local repo = git.get_repo(root_path)
   local meta_result, meta = repo:repo_meta()
