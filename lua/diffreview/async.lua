@@ -6,12 +6,18 @@ local M = {}
 function M.system(cmd, opts)
   local running = assert(coroutine.running(), 'async.system must be called inside coroutine')
 
+  local completed = false
   vim.system(cmd, opts or {}, function(result)
+    if completed then
+      return
+    end
+    completed = true
     vim.schedule(function()
-      coroutine.resume(running, result)
+      if coroutine.status(running) == 'suspended' then
+        coroutine.resume(running, result)
+      end
     end)
   end)
-
   return coroutine.yield()
 end
 
