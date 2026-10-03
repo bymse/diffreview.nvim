@@ -4,7 +4,6 @@ local side_by_side = require('diffreview.ui.side_by_side')
 local M = {}
 
 ---@class ReviewSideBySideState
----@field instance_id integer
 ---@field namespace integer
 ---@field tabpage integer|nil
 ---@field main_window integer|nil
@@ -17,17 +16,18 @@ local M = {}
 ---@field native_diff NativeDiffState
 
 ---@class ReviewUi
+---@field instance_id integer
 ---@field side_by_side ReviewSideBySideState
+---@field quickfix_id quickfix_id|nil
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
 local next_instance_id = 0
 
----@param id quickfix_id|nil
 ---@param files ChangedFileViewModel[]
----@return quickfix_id
-function ReviewUi:show_review_files(id, files)
-  return quickfix.show_review_files(id, files)
+---@return nil
+function ReviewUi:show_review_files(files)
+  self.quickfix_id = quickfix.show_review_files(self.quickfix_id, self.instance_id, files)
 end
 
 ---@param diff DiffViewModel
@@ -43,15 +43,21 @@ function ReviewUi:display_diff_inlinde(diff) end
 
 ---@return nil
 function ReviewUi:cleanup()
-  side_by_side.cleanup(self)
+  local ok, err = pcall(side_by_side.cleanup, self)
+  quickfix.cleanup(self.quickfix_id, self.instance_id)
+  self.quickfix_id = nil
+  if not ok then
+    error(err, 0)
+  end
 end
 
 ---@return ReviewUi
 function M.get_ui()
   next_instance_id = next_instance_id + 1
   return setmetatable({
+    instance_id = next_instance_id,
+    quickfix_id = nil,
     side_by_side = {
-      instance_id = next_instance_id,
       namespace = vim.api.nvim_create_namespace('diffreview.side_by_side.' .. next_instance_id),
       tabpage = nil,
       main_window = nil,

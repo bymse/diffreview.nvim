@@ -4,6 +4,75 @@ local M = {}
 
 local quickfix_title = 'Diff Review'
 
+---@param instance_id integer
+---@return string
+local function quickfix_context(instance_id)
+  return 'diffreview:files:' .. instance_id
+end
+
+---@param id quickfix_id|nil
+---@return table|nil
+local function get_quickfix_list(id)
+  if id == nil then
+    return nil
+  end
+
+  local list = vim.fn.getqflist({
+    id = id,
+    items = 1,
+    title = 1,
+    context = 1,
+    quickfixtextfunc = 1,
+    nr = 0,
+    qfbufnr = 1,
+  })
+  return list.id == id and list or nil
+end
+
+---@return quickfix_id|nil
+local function quickfix_id_for_buffer()
+  local id = vim.fn.getqflist({ id = 0 }).id
+  if id ~= 0 then
+    return id
+  end
+end
+
+---@return table[]
+local function current_tab_quickfix_windows()
+  local windows = {}
+
+  for _, window in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local info = vim.fn.getwininfo(window)[1]
+    if info.quickfix == 1 and info.loclist == 0 then
+      table.insert(windows, { id = window, quickfix_id = quickfix_id_for_buffer() })
+    end
+  end
+
+  return windows
+end
+
+---@param id quickfix_id
+---@return nil
+local function select_quickfix_list(id)
+  local current = vim.fn.getqflist({ nr = 0 })
+  local target = vim.fn.getqflist({ id = id, nr = 0 })
+  local distance = target.nr - current.nr
+
+  if distance > 0 then
+    vim.cmd(('silent %dcnewer'):format(distance))
+  elseif distance < 0 then
+    vim.cmd(('silent %dcolder'):format(-distance))
+  end
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@return boolean
+local function is_owned(id, instance_id)
+  local list = get_quickfix_list(id)
+  return list ~= nil and list.context == quickfix_context(instance_id)
+end
+
 ---@class QuickfixTextInfo
 ---@field id quickfix_id
 ---@field start_idx integer
@@ -52,27 +121,18 @@ local function create_quickfix_entries(files)
   return unviewed
 end
 
----@param id quickfix_id
-local function select_quickfix_list(id)
-  local current = vim.fn.getqflist({ nr = 0 })
-  local target = vim.fn.getqflist({ id = id, nr = 0 })
-  local distance = target.nr - current.nr
-
-  if distance > 0 then
-    vim.cmd(('silent %dcnewer'):format(distance))
-  elseif distance < 0 then
-    vim.cmd(('silent %dcolder'):format(-distance))
-  end
-end
-
 ---@param id quickfix_id|nil
+---@param instance_id integer
 ---@param files ChangedFileViewModel[]
 ---@return quickfix_id
-function M.show_review_files(id, files)
+function M.show_review_files(id, instance_id, files)
+  if not is_owned(id, instance_id) then
+    id = nil
+  end
   local action = id == nil and ' ' or 'u'
   local properties = {
     title = quickfix_title,
-    context = { plugin = 'diffreview', view = 'review_files' },
+    context = quickfix_context(instance_id),
     items = create_quickfix_entries(files),
     quickfixtextfunc = format_quickfix_entries,
   }
@@ -92,6 +152,23 @@ function M.show_review_files(id, files)
   vim.cmd('botright copen')
 
   return quickfix_id
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@return nil
+function M.cleanup(id, instance_id)
+  if not is_owned(id, instance_id) then
+    return
+  end
+
+  ---@cast id quickfix_id
+  pcall(vim.fn.setqflist, {}, 'r', { id = id, items = {} })
+  for _, window in ipairs(current_tab_quickfix_windows()) do
+    if window.quickfix_id == id then
+      pcall(vim.api.nvim_win_close, window.id, false)
+    end
+  end
 end
 
 return M
