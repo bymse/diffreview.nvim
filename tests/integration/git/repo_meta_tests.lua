@@ -23,7 +23,7 @@ M.repo_meta_should_return_branch_and_empty_remotes_when_repository_has_no_commit
     assert(meta.branch == 'main', 'expected unborn branch name')
     assert(vim.deep_equal(meta.remotes, {}), 'expected no remotes')
     assert(meta.upstream_branch == nil, 'expected no upstream branch')
-    assert(meta.default_branch == nil, 'expected no remote default branch')
+    assert(meta.default_branch_ref == nil, 'expected no remote default branch')
   end)
 end
 
@@ -85,15 +85,14 @@ M.repo_meta_should_return_upstream_and_origin_default_branch_when_present = func
     test_repo:add('file.txt')
     test_repo:commit('Initial commit')
     test_repo:run_git({ 'remote', 'add', 'origin', 'https://example.com/origin/repo.git' })
-    test_repo:run_git({ 'update-ref', 'refs/remotes/origin/main', 'HEAD' })
-    test_repo:run_git({ 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main' })
+    test_repo:set_default_branch()
     test_repo:run_git({ 'branch', '--set-upstream-to=origin/main', 'main' })
 
     local meta = metadata(test_repo.cwd)
 
     assert(meta.branch == 'main', 'expected active branch')
     assert(meta.upstream_branch == 'origin/main', 'expected configured upstream branch')
-    assert(meta.default_branch == 'origin/main', 'expected cached origin default branch')
+    assert(meta.default_branch_ref == 'refs/remotes/origin/main', 'expected full origin default branch ref')
   end)
 end
 
@@ -109,7 +108,7 @@ M.repo_meta_should_not_return_default_branch_when_only_other_remote_has_head = f
 
     local meta = metadata(test_repo.cwd)
 
-    assert(meta.default_branch == nil, 'expected no default branch without origin')
+    assert(meta.default_branch_ref == nil, 'expected no default branch without origin')
   end)
 end
 

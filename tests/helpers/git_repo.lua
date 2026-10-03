@@ -60,6 +60,12 @@ function TestGitRepo:branch(name)
   self:run_git({ 'branch', name })
 end
 
+---@return nil
+function TestGitRepo:set_default_branch()
+  self:run_git({ 'update-ref', 'refs/remotes/origin/main', 'HEAD' })
+  self:run_git({ 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main' })
+end
+
 ---@param cwd string
 ---@return TestGitRepo
 function M.get_repo(cwd)

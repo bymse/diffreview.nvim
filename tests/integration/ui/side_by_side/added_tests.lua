@@ -104,46 +104,28 @@ M.display_side_by_side_should_reuse_and_recover_owned_review_resources_when_exte
   helpers.cleanup(review_ui)
 end
 
-M.display_side_by_side_should_isolate_multiple_instance_namespaces_and_scratch_names = function()
+M.display_side_by_side_should_preserve_another_review_when_one_is_cleaned = function()
   local first_ui = ui.get_ui()
   local second_ui = ui.get_ui()
-  first_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('first.txt') }, 'vertical')
-  second_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('second.txt') }, 'vertical')
-  local first_name = vim.api.nvim_buf_get_name(helpers.main_buffer(first_ui))
-  local second_name = vim.api.nvim_buf_get_name(helpers.main_buffer(second_ui))
-
-  assert(first_ui.side_by_side.namespace ~= second_ui.side_by_side.namespace, 'expected distinct namespaces')
-  assert(first_name ~= second_name, 'expected distinct scratch names')
-  assert(first_name:match('^diffreview://%d+/main%-snapshot$') ~= nil, 'expected stable scratch name')
-  local owner_variable = 'diffreview_side_by_side_owner'
-  local first_owner = first_ui.side_by_side.instance_id
-  local second_owner = second_ui.side_by_side.instance_id
-  assert(
-    vim.api.nvim_tabpage_get_var(first_ui.side_by_side.tabpage, owner_variable) == first_owner,
-    'expected first tab ownership'
+  first_ui:display_diff_side_by_side(
+    { operation = 'added', current = helpers.snapshot('first.txt', { 'first' }) },
+    'vertical'
   )
-  assert(
-    vim.api.nvim_win_get_var(first_ui.side_by_side.main_window, owner_variable) == first_owner,
-    'expected first window ownership'
+  local first_tab = vim.api.nvim_get_current_tabpage()
+  local first_buffer = vim.api.nvim_get_current_buf()
+  second_ui:display_diff_side_by_side(
+    { operation = 'added', current = helpers.snapshot('second.txt', { 'second' }) },
+    'vertical'
   )
-  assert(
-    vim.api.nvim_buf_get_var(helpers.main_buffer(first_ui), owner_variable) == first_owner,
-    'expected first scratch ownership'
-  )
-  assert(
-    vim.api.nvim_tabpage_get_var(second_ui.side_by_side.tabpage, owner_variable) == second_owner,
-    'expected second tab ownership'
-  )
-  assert(
-    vim.api.nvim_win_get_var(second_ui.side_by_side.main_window, owner_variable) == second_owner,
-    'expected second window ownership'
-  )
-  assert(
-    vim.api.nvim_buf_get_var(helpers.main_buffer(second_ui), owner_variable) == second_owner,
-    'expected second scratch ownership'
-  )
-  assert(first_owner ~= second_owner, 'expected distinct ownership markers')
+  local second_tab = vim.api.nvim_get_current_tabpage()
+  assert(first_tab ~= second_tab, 'expected separate review tabs')
+  assert(vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false), { 'second' }))
   helpers.cleanup(first_ui)
+  assert(not vim.api.nvim_tabpage_is_valid(first_tab), 'expected first review tab to close')
+  assert(vim.api.nvim_tabpage_is_valid(second_tab), 'expected second review tab to remain open')
+  assert(vim.api.nvim_buf_is_valid(vim.api.nvim_get_current_buf()), 'expected second review buffer to remain valid')
+  assert(vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_get_current_buf(), 0, -1, false), { 'second' }))
+  assert(not vim.api.nvim_buf_is_valid(first_buffer), 'expected first review buffer to be deleted')
   helpers.cleanup(second_ui)
 end
 

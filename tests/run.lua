@@ -139,18 +139,20 @@ local function run_test(test)
   return passed, traceback
 end
 
+local passed_count = 0
+
 for _, test_name in ipairs(test_names) do
   local passed, traceback = run_test(tests[test_name])
   if passed then
-    print(string.format('PASS %s:%s', category, test_name))
+    passed_count = passed_count + 1
   else
-    print(string.format('FAIL %s:%s', category, test_name))
-    table.insert(failures, string.format('%s:%s\n%s', category, test_name, traceback))
+    print(string.format('FAIL %s:%s\n%s', category, test_name, traceback))
+    table.insert(failures, string.format('%s:%s', category, test_name))
   end
 end
 
-if #failures > 0 then
-  error(table.concat(failures, '\n\n'), 0)
-end
+print(string.format('%s: executed %d, passed %d, failed %d', category, #test_names, passed_count, #failures))
 
-print(string.format('PASS %s %d tests', category, #test_names))
+if #failures > 0 then
+  error(string.format('%d test(s) failed:\n%s', #failures, table.concat(failures, '\n')), 0)
+end
