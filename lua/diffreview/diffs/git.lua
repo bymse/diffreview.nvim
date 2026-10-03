@@ -4,6 +4,7 @@ local parsers = require('diffreview.diffs.parsers')
 ---@class GitResult
 ---@field ok boolean
 ---@field error string|nil
+---@field code integer|nil
 
 ---@class GitRemote
 ---@field name string
@@ -14,7 +15,7 @@ local parsers = require('diffreview.diffs.parsers')
 ---@field remotes GitRemote[]
 ---@field branch string|nil
 ---@field upstream_branch string|nil
----@field default_branch string|nil
+---@field default_branch_ref string|nil
 
 local M = {}
 
@@ -35,7 +36,7 @@ local function run_parsed(cmd, cwd, parse_output, text)
   end
 
   if result.code ~= 0 then
-    return { ok = false, error = result.stderr }
+    return { ok = false, error = result.stderr, code = result.code }
   end
 
   local success, output = pcall(parse_output, result.stdout)
@@ -49,14 +50,15 @@ end
 
 ---@param cmd string[]
 ---@param cwd string|nil
+---@return GitResult
 ---@return string|nil
 local function run_optional_trimmed(cmd, cwd)
   local result, output = run_parsed(cmd, cwd, vim.trim, true)
   if not result.ok then
-    return nil
+    return result, nil
   end
 
-  return output
+  return result, output
 end
 
 ---@param raw_out string
@@ -73,6 +75,22 @@ local function parse_text_output(raw_out)
   return vim.split(raw_out, '\n', { plain = true })
 end
 
+---@param raw_out string
+---@return integer, integer, boolean
+local function parse_untracked_file_stats(raw_out)
+  if raw_out:sub(-1) ~= '\0' then
+    error('git untracked-file numstat output expected to end with NUL')
+  end
+  local added, removed = raw_out:match('^([^\t]+)\t([^\t]+)\t')
+  if added == '-' and removed == '-' then
+    return 0, 0, true
+  end
+  if added == nil or removed == nil or not added:match('^%d+$') or removed ~= '0' then
+    error('invalid git untracked-file numstat output')
+  end
+  return assert(tonumber(added)), 0, false
+end
+
 ---@param expression string
 ---@return GitResult, string|nil
 function GitRepo:rev_parse(expression)
@@ -85,6 +103,47 @@ function GitRepo:rev_parse(expression)
   }
 
   return run_parsed(cmd, self.dir, vim.trim, true)
+end
+
+---@param ref string
+---@return GitResult, string|nil
+function GitRepo:symbolic_ref(ref)
+  return run_parsed({ 'git', 'symbolic-ref', '--quiet', '--', ref }, self.dir, vim.trim, true)
+end
+
+---@param first_oid string
+---@param second_oid string
+---@return GitResult, string|nil
+function GitRepo:merge_base(first_oid, second_oid)
+  if not first_oid:match('^%x+$') then
+    error('invalid first commit object ID: ' .. first_oid)
+  end
+  if not second_oid:match('^%x+$') then
+    error('invalid second commit object ID: ' .. second_oid)
+  end
+
+  return run_parsed({ 'git', 'merge-base', '--', first_oid, second_oid }, self.dir, vim.trim, true)
+end
+
+---@param path string
+---@return GitResult, integer|nil, integer|nil, boolean|nil
+function GitRepo:untracked_file_stats(path)
+  local started, result = pcall(
+    async.system,
+    { 'git', 'diff', '--no-index', '--numstat', '-z', '--', '/dev/null', path },
+    { cwd = self.dir, text = false }
+  )
+  if not started then
+    return { ok = false, error = tostring(result) }, nil, nil, nil
+  end
+  if result.code ~= 1 then
+    return { ok = false, error = result.stderr, code = result.code }, nil, nil, nil
+  end
+  local success, added, removed, binary = pcall(parse_untracked_file_stats, result.stdout)
+  if not success then
+    return { ok = false, error = tostring(added) }, nil, nil, nil
+  end
+  return { ok = true }, added, removed, binary
 end
 
 ---@param from_commit_oid string|nil
@@ -138,19 +197,21 @@ function GitRepo:repo_meta()
     return remotes_result, nil
   end
 
+  local _, branch = run_optional_trimmed({ 'git', 'symbolic-ref', '--quiet', '--short', 'HEAD' }, self.dir)
+  local _, upstream_branch =
+    run_optional_trimmed({ 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}' }, self.dir)
+  local _, default_branch_ref = self:symbolic_ref('refs/remotes/origin/HEAD')
+  if default_branch_ref ~= nil and not default_branch_ref:match('^refs/remotes/origin/.+$') then
+    default_branch_ref = nil
+  end
+
   ---@type GitRepoMeta
   local meta = {
     root = root,
     remotes = remotes,
-    branch = run_optional_trimmed({ 'git', 'symbolic-ref', '--quiet', '--short', 'HEAD' }, self.dir),
-    upstream_branch = run_optional_trimmed(
-      { 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}' },
-      self.dir
-    ),
-    default_branch = run_optional_trimmed(
-      { 'git', 'symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD' },
-      self.dir
-    ),
+    branch = branch,
+    upstream_branch = upstream_branch,
+    default_branch_ref = default_branch_ref,
   }
 
   return { ok = true }, meta
