@@ -11,3 +11,4 @@
 - [ ] Start review: load review state, show files in quickfix list
 - [ ] Open files from the quickfix
 - [ ] Cleanup review scratch buffers on close/review quit
+- [ ] Allow parallel reviews in different dirs
