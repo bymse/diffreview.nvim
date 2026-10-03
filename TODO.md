@@ -8,7 +8,8 @@
   - [x] Enable diffthis in both windows.
   - [x] Handle layout changes
   - [x] Dispose ui state
-- [ ] Start review: load review state, show files in quickfix list
+- [x] Start review: load review state, show files in quickfix list
 - [ ] Open files from the quickfix
 - [ ] Cleanup review scratch buffers on close/review quit
+- [ ] Show letter in quickfix to denote file change type 
 - [ ] Allow parallel reviews in different dirs

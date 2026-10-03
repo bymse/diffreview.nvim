@@ -23,6 +23,10 @@ lint:
     chmod +x "$appimage"
     APPIMAGE_EXTRACT_AND_RUN=1 "$appimage" --headless --clean --noplugin -n -i NONE -u NONE -l scripts/lint.lua
 
+[positional-arguments]
+nvim *args:
+    DIFFREVIEW_DEV=1 DIFFREVIEW_PLUGIN_ROOT={{ quote(justfile_directory()) }} nvim -c 'lua vim.opt.runtimepath:prepend(vim.env.DIFFREVIEW_PLUGIN_ROOT); require("diffreview").setup()' "$@"
+
 sandbox name="":
     #!/usr/bin/env sh
     set -eu
