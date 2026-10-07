@@ -1,9 +1,10 @@
 local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_render_mode_information_when_modified_content_is_unchanged = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'modified',
     old = helpers.snapshot('script.sh', { 'run' }, '100644'),
@@ -25,7 +26,7 @@ M.display_side_by_side_should_render_mode_information_when_modified_content_is_u
 end
 
 M.display_side_by_side_should_render_old_left_of_current_when_modified_content_changes = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'modified',
     old = helpers.snapshot('a.txt', { 'old' }),
@@ -33,7 +34,7 @@ M.display_side_by_side_should_render_old_left_of_current_when_modified_content_c
     content_changed = true,
   }, 'vertical')
   local state = review_ui.side_by_side
-  assert(#vim.api.nvim_tabpage_list_wins(state.tabpage) == 2, 'expected exactly two review windows')
+  assert(#vim.api.nvim_tabpage_list_wins(review_ui.tabpage) == 2, 'expected exactly two review windows')
   assert(vim.api.nvim_get_current_win() == state.main_window, 'expected current content focus')
   assert(
     vim.api.nvim_win_get_position(state.companion_window)[2] < vim.api.nvim_win_get_position(state.main_window)[2],
@@ -48,7 +49,7 @@ M.display_side_by_side_should_render_old_left_of_current_when_modified_content_c
 end
 
 M.display_side_by_side_should_render_old_above_current_when_modified_layout_is_horizontal = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'modified',
     old = helpers.snapshot('a.txt', { 'old' }),

@@ -1,9 +1,10 @@
 local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_render_deleted_snapshot_when_file_is_removed = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
     { operation = 'deleted', old = helpers.snapshot('deleted.txt', { 'gone' }) },
     'vertical'
@@ -28,7 +29,7 @@ M.display_side_by_side_should_render_deleted_snapshot_when_file_is_removed = fun
 end
 
 M.display_side_by_side_should_restore_read_only_snapshot_options_when_reusing_buffer = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
     { operation = 'deleted', old = helpers.snapshot('unknown.no_match', {}) },
     'vertical'

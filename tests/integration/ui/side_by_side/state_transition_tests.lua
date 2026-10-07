@@ -2,6 +2,7 @@ local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 local function modified_diff()
   return {
@@ -13,7 +14,7 @@ local function modified_diff()
 end
 
 M.display_side_by_side_should_restore_captured_window_options_when_leaving_two_window_mode = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local main = review_ui.side_by_side.main_window
   local companion = review_ui.side_by_side.companion_window
@@ -46,43 +47,45 @@ M.display_side_by_side_should_restore_captured_window_options_when_leaving_two_w
 end
 
 M.display_side_by_side_should_reuse_owned_two_window_handles_when_layout_is_unchanged = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local state = review_ui.side_by_side
-  local tab = state.tabpage
+  local tab = review_ui.tabpage
   local main = state.main_window
   local companion = state.companion_window
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
-  assert(state.tabpage == tab, 'expected review tab reuse')
+  assert(review_ui.tabpage == tab, 'expected review tab reuse')
   assert(state.main_window == main, 'expected main window reuse')
   assert(state.companion_window == companion, 'expected companion window reuse')
-  assert(#vim.api.nvim_tabpage_list_wins(state.tabpage) == 2, 'expected exactly two owned windows')
+  assert(#vim.api.nvim_tabpage_list_wins(review_ui.tabpage) == 2, 'expected exactly two owned windows')
   assert(vim.api.nvim_get_current_win() == main, 'expected current focus')
   helpers.cleanup(review_ui)
 end
 
-M.display_side_by_side_should_recreate_lost_companion_and_tab_on_next_display = function()
-  local review_ui = ui.get_ui()
+M.display_side_by_side_should_recreate_lost_companion_but_not_tab_on_next_display = function()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   vim.api.nvim_win_close(review_ui.side_by_side.companion_window, true)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(vim.api.nvim_win_is_valid(review_ui.side_by_side.companion_window), 'expected recreated companion')
-  local tab = review_ui.side_by_side.tabpage
+  local tab = review_ui.tabpage
   assert(tab ~= nil, 'expected review tab')
   ---@cast tab integer
   vim.api.nvim_set_current_tabpage(tab)
   vim.cmd('tabclose!')
-  review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
-  assert(vim.api.nvim_tabpage_is_valid(review_ui.side_by_side.tabpage), 'expected recreated tab')
+  local count = #vim.api.nvim_list_tabpages()
+  assert(not pcall(review_ui.display_diff_side_by_side, review_ui, modified_diff(), 'vertical'))
+  assert(#vim.api.nvim_list_tabpages() == count, 'expected no tab recreation')
   helpers.cleanup(review_ui)
 end
 
 M.display_side_by_side_should_recreate_lost_main_window_and_scratch_buffer_on_next_display = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local old_scratch = review_ui.side_by_side.companion_snapshot_buffer
   assert(old_scratch ~= nil, 'expected companion scratch buffer')
   ---@cast old_scratch integer
+  vim.cmd('vsplit')
   vim.api.nvim_buf_delete(old_scratch, { force = true })
   vim.api.nvim_win_close(review_ui.side_by_side.main_window, true)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
@@ -92,7 +95,7 @@ M.display_side_by_side_should_recreate_lost_main_window_and_scratch_buffer_on_ne
 end
 
 M.display_side_by_side_should_clear_diff_decorations_when_rendering_information = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local old_buffer = vim.api.nvim_win_get_buf(review_ui.side_by_side.companion_window)
   review_ui:display_diff_side_by_side({
@@ -109,14 +112,14 @@ M.display_side_by_side_should_clear_diff_decorations_when_rendering_information 
 end
 
 M.display_side_by_side_should_reconcile_layout_and_one_window_transitions = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
-  local tab = review_ui.side_by_side.tabpage
+  local tab = review_ui.tabpage
   assert(tab ~= nil, 'expected review tab')
   ---@cast tab integer
   local vertical_companion = review_ui.side_by_side.companion_window
   review_ui:display_diff_side_by_side(modified_diff(), 'horizontal')
-  assert(review_ui.side_by_side.tabpage == tab, 'expected tab preservation across layout')
+  assert(review_ui.tabpage == tab, 'expected tab preservation across layout')
   assert(review_ui.side_by_side.companion_window ~= vertical_companion, 'expected companion replacement for layout')
   assert(#vim.api.nvim_tabpage_list_wins(tab) == 2, 'expected two windows after layout change')
   review_ui:display_diff_side_by_side(
@@ -139,8 +142,8 @@ end
 M.display_side_by_side_should_preserve_module_owned_scrollopt_until_last_instance_leaves = function()
   local initial = vim.o.scrollopt
   vim.o.scrollopt = 'ver,jump'
-  local first = ui.get_ui()
-  local second = ui.get_ui()
+  local first = ui.get_ui(handlers)
+  local second = ui.get_ui(handlers)
   first:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(vim.o.scrollopt == 'ver,jump,hor', 'expected module hor')
   vim.o.scrollopt = 'ver,jump'
@@ -159,7 +162,7 @@ end
 M.display_side_by_side_should_not_readd_preexisting_scrollopt_hor_after_external_removal = function()
   local initial = vim.o.scrollopt
   vim.o.scrollopt = 'ver,hor'
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   vim.o.scrollopt = 'ver'
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
@@ -171,7 +174,7 @@ end
 M.display_side_by_side_should_preserve_preexisting_scrollopt_hor_across_two_window_transitions = function()
   local initial = vim.o.scrollopt
   vim.o.scrollopt = 'ver,jump,hor'
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(vim.o.scrollopt == 'ver,jump,hor', 'expected pre-existing hor after two-window rendering')
   review_ui:display_diff_side_by_side(
@@ -192,7 +195,7 @@ end
 M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = function()
   local initial_scrollopt = vim.o.scrollopt
   vim.o.scrollopt = 'ver,jump'
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'error',
     attempted_operation = 'modified',
@@ -202,7 +205,7 @@ M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = f
   local information_buffer = review_ui.side_by_side.information_buffer
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local state = review_ui.side_by_side
-  local tabpage = state.tabpage
+  local tabpage = review_ui.tabpage
   local main_window = state.main_window
   local companion_window = state.companion_window
   local main_buffer = state.main_snapshot_buffer
@@ -234,7 +237,6 @@ M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = f
   assert(next(state.native_diff.window_options) == nil, 'expected cleared native diff options')
   assert(vim.o.scrollopt == 'ver,jump', 'expected owned horizontal scrolling removal')
   for _, field in ipairs({
-    'tabpage',
     'main_window',
     'companion_window',
     'main_snapshot_buffer',
@@ -245,6 +247,7 @@ M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = f
   }) do
     assert(state[field] == nil, 'expected cleared ' .. field)
   end
+  assert(review_ui.tabpage == nil, 'expected cleared tab')
   review_ui:cleanup()
   vim.o.scrollopt = initial_scrollopt
 end
@@ -252,7 +255,7 @@ end
 M.cleanup_should_preserve_borrowed_path_buffer_when_it_is_decorated = function()
   local path = vim.fn.tempname() .. '.txt'
   vim.fn.writefile({ 'borrowed' }, path)
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.path(path) }, 'vertical')
   local buffer = helpers.main_buffer(review_ui)
   local namespace = review_ui.side_by_side.namespace
@@ -309,9 +312,9 @@ M.display_side_by_side_should_preserve_unrelated_user_tab_across_two_window_tran
   local expected = unrelated_tab_state(user_tab)
   assert(expected[left_window].diff and expected[right_window].diff, 'expected user diff group')
 
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
-  assert(#vim.api.nvim_tabpage_list_wins(review_ui.side_by_side.tabpage) == 2, 'expected review two-window rendering')
+  assert(#vim.api.nvim_tabpage_list_wins(review_ui.tabpage) == 2, 'expected review two-window rendering')
   assert(
     vim.deep_equal(unrelated_tab_state(user_tab), expected),
     'expected unchanged user tab after two-window rendering'
@@ -329,15 +332,14 @@ M.display_side_by_side_should_preserve_unrelated_user_tab_across_two_window_tran
     vim.deep_equal(unrelated_tab_state(user_tab), expected),
     'expected unchanged user tab after review layout change'
   )
-  local review_tab = review_ui.side_by_side.tabpage
+  local review_tab = review_ui.tabpage
   assert(review_tab ~= nil, 'expected review tab')
   ---@cast review_tab integer
   vim.api.nvim_set_current_tabpage(review_tab)
   vim.cmd('tabclose!')
-  review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(
     vim.deep_equal(unrelated_tab_state(user_tab), expected),
-    'expected unchanged user tab after review-tab loss recovery'
+    'expected unchanged user tab after review-tab closure'
   )
 
   helpers.cleanup(review_ui)

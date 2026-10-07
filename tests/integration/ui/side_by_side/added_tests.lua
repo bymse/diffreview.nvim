@@ -1,6 +1,7 @@
 local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 ---@param tabpage integer
 ---@return table
@@ -27,7 +28,7 @@ local function tab_state(tabpage)
 end
 
 M.display_side_by_side_should_render_added_snapshot_when_text_is_present = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
     { operation = 'added', current = helpers.snapshot('added.txt', { 'one', 'two' }) },
     'vertical'
@@ -48,10 +49,12 @@ M.display_side_by_side_should_render_added_snapshot_when_text_is_present = funct
 end
 
 M.display_side_by_side_should_recreate_deleted_scratch_buffer_when_displaying_again = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   local diff = { operation = 'added', current = helpers.snapshot('first.txt', { 'first' }) }
   review_ui:display_diff_side_by_side(diff, 'vertical')
   local first_buffer = helpers.main_buffer(review_ui)
+  vim.cmd('vsplit')
+  vim.cmd('enew')
   vim.api.nvim_buf_delete(first_buffer, { force = true })
 
   review_ui:display_diff_side_by_side(
@@ -65,7 +68,7 @@ M.display_side_by_side_should_recreate_deleted_scratch_buffer_when_displaying_ag
 end
 
 M.display_side_by_side_should_leave_tab_and_buffers_unchanged_when_layout_is_invalid = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   local tab_count = #vim.api.nvim_list_tabpages()
   local buffer_count = #vim.api.nvim_list_bufs()
   local ok = pcall(
@@ -78,19 +81,34 @@ M.display_side_by_side_should_leave_tab_and_buffers_unchanged_when_layout_is_inv
   assert(not ok, 'expected invalid layout error')
   assert(#vim.api.nvim_list_tabpages() == tab_count, 'expected no tab creation')
   assert(#vim.api.nvim_list_bufs() == buffer_count, 'expected no buffer creation')
+  review_ui:cleanup()
 end
 
-M.display_side_by_side_should_reuse_and_recover_owned_review_resources_when_externally_closed = function()
+M.display_side_by_side_should_leave_tab_and_buffers_unchanged_when_model_is_invalid = function()
+  local review_ui = ui.get_ui(handlers)
+  local tab_count = #vim.api.nvim_list_tabpages()
+  local buffer_count = #vim.api.nvim_list_bufs()
+  local ok = pcall(review_ui.display_diff_side_by_side, review_ui, {
+    operation = 'added',
+    current = helpers.snapshot('', { 'invalid' }),
+  }, 'vertical')
+  assert(not ok, 'expected invalid model error')
+  assert(#vim.api.nvim_list_tabpages() == tab_count, 'expected no tab creation')
+  assert(#vim.api.nvim_list_bufs() == buffer_count, 'expected no buffer creation')
+  review_ui:cleanup()
+end
+
+M.display_side_by_side_should_recover_window_but_not_closed_tab = function()
   local invoking_tab = vim.api.nvim_get_current_tabpage()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('first.txt') }, 'vertical')
-  local first_tab = review_ui.side_by_side.tabpage
+  local first_tab = review_ui.tabpage
   local first_window = review_ui.side_by_side.main_window
   local first_buffer = helpers.main_buffer(review_ui)
   assert(first_window ~= nil, 'expected initial main window')
 
   review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('second.txt') }, 'vertical')
-  assert(review_ui.side_by_side.tabpage == first_tab, 'expected review tab reuse')
+  assert(review_ui.tabpage == first_tab, 'expected review tab reuse')
   assert(helpers.main_buffer(review_ui) == first_buffer, 'expected snapshot buffer reuse')
   vim.cmd('vsplit')
   vim.api.nvim_win_close(first_window, true)
@@ -98,15 +116,22 @@ M.display_side_by_side_should_reuse_and_recover_owned_review_resources_when_exte
   assert(vim.api.nvim_win_is_valid(review_ui.side_by_side.main_window), 'expected recovered main window')
   vim.cmd('tabclose!')
   vim.api.nvim_set_current_tabpage(invoking_tab)
-  review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('fourth.txt') }, 'vertical')
-  assert(review_ui.side_by_side.tabpage ~= first_tab, 'expected recovered review tab')
-  assert(vim.api.nvim_get_current_win() == review_ui.side_by_side.main_window, 'expected main focus')
+  local count = #vim.api.nvim_list_tabpages()
+  assert(
+    not pcall(
+      review_ui.display_diff_side_by_side,
+      review_ui,
+      { operation = 'added', current = helpers.snapshot('fourth.txt') },
+      'vertical'
+    )
+  )
+  assert(#vim.api.nvim_list_tabpages() == count, 'expected no tab recreation')
   helpers.cleanup(review_ui)
 end
 
 M.display_side_by_side_should_preserve_another_review_when_one_is_cleaned = function()
-  local first_ui = ui.get_ui()
-  local second_ui = ui.get_ui()
+  local first_ui = ui.get_ui(handlers)
+  local second_ui = ui.get_ui(handlers)
   first_ui:display_diff_side_by_side(
     { operation = 'added', current = helpers.snapshot('first.txt', { 'first' }) },
     'vertical'
@@ -132,7 +157,7 @@ end
 M.display_side_by_side_should_preserve_invoking_tab_windows_layout_and_options = function()
   local invoking_tab = vim.api.nvim_get_current_tabpage()
   local before = tab_state(invoking_tab)
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('file.txt') }, 'vertical')
   assert(vim.api.nvim_tabpage_is_valid(invoking_tab), 'expected invoking tab to remain valid')
   assert(vim.deep_equal(tab_state(invoking_tab), before), 'expected invoking tab state preservation')
@@ -140,7 +165,7 @@ M.display_side_by_side_should_preserve_invoking_tab_windows_layout_and_options =
 end
 
 M.display_side_by_side_should_preserve_snapshot_endofline_fileformat_and_filetype = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   for _, fileformat in ipairs({ 'unix', 'dos', 'mac' }) do
     local current = helpers.snapshot('script.sh', { '#!/bin/sh' })
     current.content.endofline = false

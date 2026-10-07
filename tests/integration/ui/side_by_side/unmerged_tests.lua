@@ -1,11 +1,12 @@
 local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_render_unmerged_path_buffer_when_conflict_is_current = function()
   local path = vim.fn.tempname() .. '.txt'
   vim.fn.writefile({ 'conflict' }, path)
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'unmerged',
     current = {
@@ -29,7 +30,7 @@ M.display_side_by_side_should_not_change_real_buffer_options_when_added_path_is_
     readonly = vim.api.nvim_get_option_value('readonly', { buf = buffer }),
     filetype = vim.api.nvim_get_option_value('filetype', { buf = buffer }),
   }
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'added',
     current = {
@@ -59,7 +60,7 @@ end
 M.display_side_by_side_should_not_decorate_truly_empty_path_backed_file = function()
   local path = vim.fn.tempname() .. '.txt'
   vim.fn.writefile({}, path)
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'added',
     current = {
@@ -80,7 +81,7 @@ end
 M.display_side_by_side_should_decorate_newline_only_path_backed_file = function()
   local path = vim.fn.tempname() .. '.txt'
   vim.fn.writefile({ '' }, path)
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'added',
     current = {
@@ -114,7 +115,7 @@ M.display_side_by_side_should_decorate_unsaved_path_buffer_content_instead_of_di
   local buffer = vim.fn.bufadd(path)
   vim.fn.bufload(buffer)
   vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { 'unsaved' })
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'added',
     current = {

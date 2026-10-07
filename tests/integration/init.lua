@@ -1,6 +1,6 @@
 return {
   'integration.git.diff_tests',
-  'integration.git.load_text_tests',
+  'integration.git.load_blob_tests',
   'integration.git.ls_files_tests',
   'integration.git.rev_parse_tests',
   'integration.git.revision_tests',
@@ -10,6 +10,7 @@ return {
   'integration.diffs.filesystem_tests',
   'integration.diffs.summaries_tests',
   'integration.diffs.cancellation_tests',
+  'integration.diffs.selected_view_tests',
   'integration.review_tests',
   'integration.ui.quickfix_tests',
   'integration.ui.statusline_tests',

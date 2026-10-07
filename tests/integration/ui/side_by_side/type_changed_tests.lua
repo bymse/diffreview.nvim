@@ -1,9 +1,10 @@
 local helpers = require('integration.ui.side_by_side.helpers')
 local ui = require('diffreview.ui')
 local M = {}
+local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_render_type_information_when_file_type_changes = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
     { operation = 'type_changed', old = helpers.binary('entry', '100644'), current = helpers.binary('entry', '120000') },
     'vertical'
@@ -29,7 +30,7 @@ M.display_side_by_side_should_render_type_information_when_file_type_changes = f
 end
 
 M.display_side_by_side_should_emit_unavailable_binary_metadata_for_text_side = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'modified',
     old = helpers.snapshot('mixed.txt'),
@@ -53,7 +54,7 @@ M.display_side_by_side_should_emit_unavailable_binary_metadata_for_text_side = f
 end
 
 M.display_side_by_side_should_not_emit_metadata_when_type_change_is_text_only = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'type_changed',
     old = helpers.snapshot('entry', { 'target' }, '100644'),
@@ -76,7 +77,7 @@ M.display_side_by_side_should_not_emit_metadata_when_type_change_is_text_only = 
 end
 
 M.display_side_by_side_should_emit_type_change_metadata_only_for_binary_side = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'type_changed',
     old = helpers.snapshot('entry', { 'target' }, '100644'),
@@ -101,7 +102,7 @@ M.display_side_by_side_should_emit_type_change_metadata_only_for_binary_side = f
 end
 
 M.display_side_by_side_should_render_unavailable_binary_fields_independently_when_metadata_is_missing = function()
-  local review_ui = ui.get_ui()
+  local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
     operation = 'type_changed',
     old = { display_path = 'entry', mode = '100644', content = { kind = 'binary', size = 7 } },
