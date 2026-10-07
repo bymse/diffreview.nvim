@@ -15,6 +15,7 @@ Example: `rev_parse_should_return_error_when_repository_has_no_commits`.
 - Test observable behavior through public interfaces and real editor/Git fixtures; do not assert component internals or incidental diagnostic wording.
 - Do not mock, replace, or intercept components, Neovim APIs, or notifications to force or observe behavior. If behavior cannot be observed externally, omit that test.
 - Split large test modules into focused files by behavior (for example, revision resolution, filesystem errors, and cancellation).
+- Integration tests exercise module interfaces, not user interactions: do not send editor keys or replicate user behavior. Put key-driven editor flows in functional tests; add an internal interface when integration coverage needs one.
 
 ## Running Tests
 
