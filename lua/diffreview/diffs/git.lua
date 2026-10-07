@@ -62,20 +62,6 @@ local function run_optional_trimmed(cmd, cwd)
 end
 
 ---@param raw_out string
----@return string[]
-local function parse_text_output(raw_out)
-  if raw_out == '' then
-    return {}
-  end
-
-  if raw_out:sub(-1) == '\n' then
-    raw_out = raw_out:sub(1, -2)
-  end
-
-  return vim.split(raw_out, '\n', { plain = true })
-end
-
----@param raw_out string
 ---@return integer, integer, boolean
 local function parse_untracked_file_stats(raw_out)
   if raw_out:sub(-1) ~= '\0' then
@@ -170,13 +156,15 @@ function GitRepo:diff(from_commit_oid, to_commit_oid)
 end
 
 ---@param oid string
----@return GitResult, string[]|nil
-function GitRepo:load_text(oid)
+---@return GitResult, string|nil
+function GitRepo:load_blob(oid)
   if not oid:match('^%x+$') then
     error('invalid object ID: ' .. oid)
   end
 
-  return run_parsed({ 'git', 'cat-file', 'blob', oid }, self.dir, parse_text_output, true)
+  return run_parsed({ 'git', 'cat-file', 'blob', oid }, self.dir, function(raw_out)
+    return raw_out
+  end, false)
 end
 
 ---@return GitResult, string[]|nil

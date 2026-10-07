@@ -1,6 +1,7 @@
 local file_mode = require('diffreview.file_mode')
 local file_utils = require('diffreview.file_utils')
 local async_operation = require('diffreview.async_operation')
+local content = require('diffreview.diffs.content')
 local git = require('diffreview.diffs.git')
 local status = require('diffreview.diffs.status')
 
@@ -28,10 +29,16 @@ local status = require('diffreview.diffs.status')
 ---@field root string
 ---@field absolute_path string|nil
 
+---@class ResolvedComparison
+---@field from_oid string
+---@field to_oid string|nil
+---@field target_is_worktree boolean
+
 ---@class LoadedDiffs
 ---@field files ChangedFileViewModel[]
 ---@field repo GitRepo
 ---@field entries_by_id table<string, LoadedDiffEntry>
+---@field comparison ResolvedComparison
 
 local M = {}
 
@@ -57,11 +64,6 @@ end
 ---@class ResolvedRevision
 ---@field oid string
 ---@field is_branch boolean
-
----@class ResolvedComparison
----@field from_oid string
----@field to_oid string|nil
----@field target_is_worktree boolean
 
 ---@param repo GitRepo
 ---@param expression string
@@ -192,7 +194,7 @@ function M.load_diffs(options, operation)
     return failure('git', diff_result.error)
   end
   ---@type LoadedDiffs
-  local loaded = { files = {}, repo = repo, entries_by_id = {} }
+  local loaded = { files = {}, repo = repo, entries_by_id = {}, comparison = comparison }
   for _, diff in ipairs(diffs) do
     local summary, id = tracked_summary(diff)
     table.insert(loaded.files, summary)
@@ -233,6 +235,21 @@ function M.load_diffs(options, operation)
     end
   end
   return { ok = true, error = nil }, loaded
+end
+
+---@param loaded LoadedDiffs
+---@param file_id string
+---@param operation AsyncOperation|nil
+---@return DiffViewModel|nil
+function M.load_selected_view(loaded, file_id, operation)
+  if async_operation.is_canceled(operation) then
+    return nil
+  end
+  local entry = loaded.entries_by_id[file_id]
+  if entry == nil then
+    return nil
+  end
+  return content.load(loaded.repo, loaded.comparison.target_is_worktree, entry, operation)
 end
 
 return M
