@@ -1,6 +1,5 @@
 local decorations = require('diffreview.ui.decorations')
 local diff_information = require('diffreview.ui.diff_information')
-local diff_view_model_validator = require('diffreview.ui.diff_view_model_validator')
 local native_diff = require('diffreview.ui.native_diff')
 local scratch_buffer = require('diffreview.ui.scratch_buffer')
 local statusline = require('diffreview.ui.statusline')
@@ -16,15 +15,6 @@ local owner_variable = 'diffreview_side_by_side_owner'
 local function is_owned(resource, getter, instance_id)
   local ok, value = pcall(getter, resource, owner_variable)
   return ok and value == instance_id
-end
-
----@param state ReviewSideBySideState
----@param instance_id integer
----@return boolean
-local function has_owned_tab(state, instance_id)
-  return state.tabpage ~= nil
-    and vim.api.nvim_tabpage_is_valid(state.tabpage)
-    and is_owned(state.tabpage, vim.api.nvim_tabpage_get_var, instance_id)
 end
 
 ---@param state ReviewSideBySideState
@@ -60,17 +50,6 @@ end
 ---@param instance_id integer
 ---@param layout ViewLayout
 local function ensure_review_window(state, instance_id, layout)
-  if not has_owned_tab(state, instance_id) then
-    state.tabpage = nil
-    state.main_window = nil
-    state.companion_window = nil
-    vim.cmd('tabnew')
-    state.tabpage = vim.api.nvim_get_current_tabpage()
-    vim.api.nvim_tabpage_set_var(state.tabpage, owner_variable, instance_id)
-  else
-    vim.api.nvim_set_current_tabpage(state.tabpage)
-  end
-
   if not has_owned_window(state, state.main_window, instance_id) then
     if has_owned_window(state, state.companion_window, instance_id) then
       local split = layout == 'vertical' and 'right' or 'below'
@@ -162,32 +141,20 @@ end
 ---@param layout ViewLayout
 ---@return nil
 function M.display_side_by_side(ui, diff, layout)
-  diff_view_model_validator.validate(diff)
-  if layout ~= 'horizontal' and layout ~= 'vertical' then
-    error('Invalid view layout: ' .. tostring(layout))
-  end
   local state = ui.side_by_side
   local instance_id = ui.instance_id
   local will_use_two_windows = is_reserved_two_window(diff) and not has_binary_version(diff)
   local active_window_lost = state.native_diff.active
     and (
-      not has_owned_tab(state, instance_id)
-      or not has_owned_window(state, state.main_window, instance_id)
+      not has_owned_window(state, state.main_window, instance_id)
       or not has_owned_window(state, state.companion_window, instance_id)
     )
-  local owned_tab = has_owned_tab(state, instance_id)
-  local release_active = not owned_tab or not will_use_two_windows or active_window_lost
+  local release_active = not will_use_two_windows or active_window_lost
   local native_diff_transition = clear_previous_presentation(state, instance_id, release_active, active_window_lost)
-  if not owned_tab then
-    state.tabpage = nil
-    state.main_window = nil
+  if not will_use_two_windows or (state.active_layout ~= nil and state.active_layout ~= layout) then
+    dispose_companion(state, instance_id)
+  elseif not has_owned_window(state, state.companion_window, instance_id) then
     state.companion_window = nil
-  else
-    if not will_use_two_windows or (state.active_layout ~= nil and state.active_layout ~= layout) then
-      dispose_companion(state, instance_id)
-    elseif not has_owned_window(state, state.companion_window, instance_id) then
-      state.companion_window = nil
-    end
   end
   ensure_review_window(state, instance_id, layout)
 
@@ -247,26 +214,10 @@ function M.cleanup(ui)
   local instance_id = ui.instance_id
   local active_window_lost = state.native_diff.active
     and (
-      not has_owned_tab(state, instance_id)
-      or not has_owned_window(state, state.main_window, instance_id)
+      not has_owned_window(state, state.main_window, instance_id)
       or not has_owned_window(state, state.companion_window, instance_id)
     )
   clear_previous_presentation(state, instance_id, true, active_window_lost)
-
-  if has_owned_tab(state, instance_id) then
-    local review_tab = state.tabpage
-    ---@cast review_tab integer
-    local return_tab = vim.api.nvim_get_current_tabpage()
-    if #vim.api.nvim_list_tabpages() == 1 then
-      vim.cmd('tabnew')
-      return_tab = vim.api.nvim_get_current_tabpage()
-    end
-    vim.api.nvim_set_current_tabpage(review_tab)
-    vim.cmd('tabclose!')
-    if return_tab ~= review_tab and vim.api.nvim_tabpage_is_valid(return_tab) then
-      vim.api.nvim_set_current_tabpage(return_tab)
-    end
-  end
 
   for _, field in ipairs({ 'main_snapshot_buffer', 'companion_snapshot_buffer', 'information_buffer' }) do
     local buffer = state[field]
@@ -280,7 +231,6 @@ function M.cleanup(ui)
     state[field] = nil
   end
 
-  state.tabpage = nil
   state.main_window = nil
   state.companion_window = nil
   state.decorated_buffer = nil
