@@ -7,6 +7,7 @@ package.path = table.concat({
   root .. '/tests/?/init.lua',
   package.path,
 }, ';')
+require('diffreview').setup()
 
 local sandbox_name = vim.env.DIFFREVIEW_SANDBOX_NAME or ''
 local sandbox_path

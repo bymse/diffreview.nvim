@@ -10,10 +10,7 @@ function M.prepare_sandbox(repo)
   })
   repo:add('justfile')
   repo:commit('Initial commit')
-  repo:write_file('justfile', {
-    'default:',
-    '    @echo "sandbox ready"',
-  })
+  repo:run_git({ 'mv', 'justfile', 'justfile1' })
 end
 
 ---@param repo TestGitRepo
