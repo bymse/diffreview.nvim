@@ -9,7 +9,10 @@
   - [x] Handle layout changes
   - [x] Dispose ui state
 - [x] Start review: load review state, show files in quickfix list
+- [ ] move autocmds outside of the ui
 - [ ] Open files from the quickfix
+- [ ] Reopen/reload (?) quickfix on command
+- [ ] Show moved/renamed files in quickfix with details: moved from where to where
 - [ ] Cleanup review scratch buffers on close/review quit
 - [ ] Show letter in quickfix to denote file change type 
 - [ ] Allow parallel reviews in different dirs
