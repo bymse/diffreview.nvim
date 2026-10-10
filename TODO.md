@@ -1,4 +1,5 @@
 - [ ] move autocmds outside of the ui
+- [ ] move path selection to storage.lua
 - [ ] Mark multiple files as viewed
 - [ ] Reopen/reload (?) quickfix on command
 - [ ] Cleanup review scratch buffers on close/review quit
