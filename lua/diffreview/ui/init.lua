@@ -87,17 +87,80 @@ function ReviewUi:show_review_files(files)
   end)
 end
 
+---@param self ReviewUi
+---@return boolean
+local function in_review_tab(self)
+  return self.tabpage ~= nil and vim.api.nvim_get_current_tabpage() == self.tabpage
+end
+
+---@return 'diff'|'quickfix'|nil, string|nil
+function ReviewUi:mark_context()
+  if not in_review_tab(self) then
+    return nil, nil
+  end
+  local window = vim.api.nvim_get_current_win()
+  if vim.fn.getwininfo(window)[1].quickfix == 1 then
+    local row = vim.api.nvim_win_get_cursor(window)[1]
+    local id = quickfix.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
+    return id and 'quickfix' or nil, id
+  end
+  return 'diff', nil
+end
+
+---@param files ChangedFileViewModel[]
+---@return boolean
+function ReviewUi:toggle_review_files(files)
+  if not in_review_tab(self) then
+    return false
+  end
+  if quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage) then
+    quickfix.close_drawer(self.quickfix_id, self.instance_id)
+  else
+    self:show_review_files(files)
+  end
+  return true
+end
+
+---@param files ChangedFileViewModel[]
+---@return nil
+function ReviewUi:update_review_files(files)
+  quickfix.update_review_files(self.quickfix_id, self.instance_id, files)
+end
+
+---@return boolean
+function ReviewUi:files_open()
+  return self.tabpage ~= nil and quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage)
+end
+
+---@return nil
+function ReviewUi:clear_selected_diff()
+  local tab = assert(self.tabpage)
+  present_in_review_tab(tab, function()
+    side_by_side.clear(self)
+  end)
+end
+
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
 ---@return nil
-function ReviewUi:display_diff_side_by_side(diff, layout)
+function ReviewUi:refresh_selected_diff(diff, layout)
+  self:display_diff_side_by_side(diff, layout, true)
+end
+
+---@param diff DiffViewModel
+---@param layout ViewLayout
+---@param keep_drawer boolean|nil
+---@return nil
+function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
   validator.validate(diff)
   if layout ~= 'horizontal' and layout ~= 'vertical' then
     error('Invalid view layout: ' .. tostring(layout))
   end
   local tab = acquire_tab(self)
   present_in_review_tab(tab, function()
-    quickfix.close_drawer(self.quickfix_id, self.instance_id)
+    if not keep_drawer then
+      quickfix.close_drawer(self.quickfix_id, self.instance_id)
+    end
     side_by_side.display_side_by_side(self, diff, layout)
   end)
 end

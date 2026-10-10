@@ -4,6 +4,7 @@ local M = {}
 
 local quickfix_title = 'Diff Review'
 local selection_bindings = {}
+local presented_ids = {}
 
 ---@param instance_id integer
 ---@return string
@@ -104,6 +105,36 @@ local function remove_selection_binding(instance_id)
   selection_bindings[instance_id] = nil
 end
 
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param tab integer
+---@param row integer
+---@return string|nil
+function M.row_id(id, instance_id, tab, row)
+  local list = get_active_owned_list(id, instance_id)
+  local window = vim.api.nvim_get_current_win()
+  local mapping = presented_ids[instance_id]
+  if
+    list == nil
+    or mapping == nil
+    or vim.api.nvim_get_current_tabpage() ~= tab
+    or not displays_quickfix_buffer(window, list.qfbufnr)
+    or row < 1
+    or row > #mapping
+    or #list.items ~= #mapping
+  then
+    return nil
+  end
+  for index, expected in ipairs(mapping) do
+    local item = list.items[index]
+    local data = item and item.user_data
+    if not item or not item.valid or type(data) ~= 'table' or data.file_id ~= expected then
+      return nil
+    end
+  end
+  return mapping[row]
+end
+
 ---@param id quickfix_id
 ---@param instance_id integer
 ---@param buffer integer
@@ -121,23 +152,8 @@ local function bind_selection(id, instance_id, buffer, file_ids, on_file_selecte
       end
 
       local row = vim.api.nvim_win_get_cursor(0)[1]
-      local list = get_active_owned_list(id, instance_id)
-      local info = vim.fn.getwininfo(vim.api.nvim_get_current_win())[1]
-      if
-        list == nil
-        or list.qfbufnr ~= buffer
-        or vim.api.nvim_get_current_buf() ~= buffer
-        or info == nil
-        or info.quickfix ~= 1
-        or info.loclist ~= 0
-      then
-        return
-      end
-
-      local item = list.items[row]
-      local user_data = item and item.user_data
-      local file_id = type(user_data) == 'table' and user_data.file_id or nil
-      if item == nil or not item.valid or type(file_id) ~= 'string' or not file_ids[file_id] then
+      local file_id = M.row_id(id, instance_id, vim.api.nvim_get_current_tabpage(), row)
+      if file_id == nil or not file_ids[file_id] or vim.api.nvim_get_current_buf() ~= buffer then
         return
       end
 
@@ -150,6 +166,23 @@ local function bind_selection(id, instance_id, buffer, file_ids, on_file_selecte
     desc = 'Open selected Diff Review file',
     silent = true,
   })
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param tab integer
+---@return boolean
+function M.drawer_open(id, instance_id, tab)
+  local list = get_active_owned_list(id, instance_id)
+  if list == nil then
+    return false
+  end
+  for _, window in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    if displays_quickfix_buffer(window, list.qfbufnr) then
+      return true
+    end
+  end
+  return false
 end
 
 ---@class QuickfixTextInfo
@@ -172,12 +205,21 @@ local function format_quickfix_entries(info)
 end
 
 ---@param files ChangedFileViewModel[]
----@return vim.quickfix.entry[]
-local function create_quickfix_entries(files)
+---@return ChangedFileViewModel[]
+local function ordered_files(files)
   local unviewed = {}
   local viewed = {}
-
   for _, file in ipairs(files) do
+    table.insert(file.viewed and viewed or unviewed, file)
+  end
+  return vim.list_extend(unviewed, viewed)
+end
+
+---@param files ChangedFileViewModel[]
+---@return vim.quickfix.entry[]
+local function create_quickfix_entries(files)
+  local entries = {}
+  for _, file in ipairs(ordered_files(files)) do
     local entry = {
       lnum = 1,
       col = 1,
@@ -193,11 +235,19 @@ local function create_quickfix_entries(files)
       },
     }
 
-    table.insert(file.viewed and viewed or unviewed, entry)
+    entries[#entries + 1] = entry
   end
+  return entries
+end
 
-  vim.list_extend(unviewed, viewed)
-  return unviewed
+---@param files ChangedFileViewModel[]
+---@return string[]
+function M.ordered_ids(files)
+  local ids = {}
+  for _, file in ipairs(ordered_files(files)) do
+    ids[#ids + 1] = file.id
+  end
+  return ids
 end
 
 ---@param id quickfix_id|nil
@@ -230,6 +280,7 @@ function M.show_review_files(id, instance_id, files, on_file_selected, on_list_a
 
   local quickfix_id = id or vim.fn.getqflist({ id = 0 }).id
   on_list_acquired(quickfix_id)
+  presented_ids[instance_id] = M.ordered_ids(files)
   select_quickfix_list(quickfix_id)
   vim.cmd('botright copen')
   local list = assert(get_quickfix_list(quickfix_id))
@@ -240,6 +291,20 @@ function M.show_review_files(id, instance_id, files, on_file_selected, on_list_a
   bind_selection(quickfix_id, instance_id, list.qfbufnr, file_ids, on_file_selected)
 
   return quickfix_id
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param files ChangedFileViewModel[]
+---@return nil
+function M.update_review_files(id, instance_id, files)
+  if not is_owned(id, instance_id) then
+    return
+  end
+  if vim.fn.setqflist({}, 'u', { id = id, items = create_quickfix_entries(files) }) ~= 0 then
+    error('failed to update the Diff Review quickfix list')
+  end
+  presented_ids[instance_id] = M.ordered_ids(files)
 end
 
 ---@param id quickfix_id|nil
@@ -257,6 +322,7 @@ end
 ---@return nil
 function M.cleanup(id, instance_id)
   remove_selection_binding(instance_id)
+  presented_ids[instance_id] = nil
   local list = get_quickfix_list(id)
   if list == nil or list.context ~= quickfix_context(instance_id) then
     return

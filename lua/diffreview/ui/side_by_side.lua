@@ -237,4 +237,25 @@ function M.cleanup(ui)
   state.active_layout = nil
 end
 
+---@param ui ReviewUi
+---@return nil
+function M.clear(ui)
+  local state = ui.side_by_side
+  if state.main_window == nil then
+    return
+  end
+  local main = state.main_window
+  local companion = state.companion_window
+  M.cleanup(ui)
+  if has_owned_window(state, companion, ui.instance_id) then
+    vim.api.nvim_win_close(assert(companion), false)
+  end
+  if has_owned_window(state, main, ui.instance_id) then
+    local buffer = scratch_buffer.information(ui.instance_id, nil, 'main-information', {})
+    state.information_buffer = buffer
+    state.main_window = main
+    vim.api.nvim_win_set_buf(assert(main), buffer)
+  end
+end
+
 return M
