@@ -1,4 +1,5 @@
 - [ ] move autocmds outside of the ui
+- [ ] Mark multiple files as viewed
 - [ ] Reopen/reload (?) quickfix on command
 - [ ] Cleanup review scratch buffers on close/review quit
 - [ ] Show letter in quickfix to denote file change type 
