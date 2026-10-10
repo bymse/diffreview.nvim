@@ -1,6 +1,8 @@
 return {
   'functional.user_commands_test',
   'functional.review_tab_lifecycle_test',
+  'functional.review_viewed_test',
+  'functional.review_refresh_test',
   'functional.review_selection_added_test',
   'functional.review_selection_modified_test',
   'functional.review_selection_deleted_test',

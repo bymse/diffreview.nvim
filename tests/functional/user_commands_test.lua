@@ -40,13 +40,38 @@ local function wait_for_review_quickfix()
   return id
 end
 
-M.should_register_after_setup = function()
+M.plugin_should_register_commands_when_setup_is_called = function()
   assert(vim.fn.exists(':ReviewStart') == 0, 'expected ReviewStart to require setup')
   assert(vim.fn.exists(':ReviewStop') == 0, 'expected ReviewStop to require setup')
+  assert(vim.fn.exists(':ReviewRefresh') == 0, 'expected ReviewRefresh to require setup')
   functional_review.ensure_setup()
   assert(vim.fn.exists(':ReviewStart') == 2, 'expected ReviewStart command')
   assert(vim.fn.exists(':ReviewStop') == 2, 'expected ReviewStop command')
+  for _, name in ipairs({ 'ReviewFiles', 'ReviewRefresh', 'ReviewMarkViewed', 'ReviewMarkUnviewed' }) do
+    assert(vim.fn.exists(':' .. name) == 2, 'expected ' .. name .. ' command')
+  end
   assert(not pcall(diffreview.setup, {}), 'expected setup to remain single-use')
+end
+
+M.review_refresh_should_report_unavailable_when_review_is_inactive = function()
+  functional_review.ensure_setup()
+  local before = vim.api.nvim_exec2('messages', { output = true }).output
+  pcall(function()
+    vim.cmd('ReviewRefresh')
+  end)
+  local after = vim.api.nvim_exec2('messages', { output = true }).output
+  assert(after ~= before and after:find('Review refresh unavailable', 1, true))
+end
+
+M.review_refresh_should_preserve_review_when_arity_is_invalid = function()
+  with_command_repo(function()
+    vim.cmd('ReviewStart HEAD')
+    local id = wait_for_review_quickfix()
+    assert(not pcall(function()
+      vim.cmd('ReviewRefresh unexpected')
+    end))
+    assert(vim.fn.getqflist({ id = 0 }).id == id)
+  end)
 end
 
 M.should_reject_invalid_start_options = function()
