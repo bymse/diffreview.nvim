@@ -4,6 +4,10 @@ local status = require('diffreview.diffs.status')
 
 local M = {}
 
+---@class WorktreeFingerprintInput
+---@field bytes string
+---@field mode DiffFileMode
+
 ---@param entry LoadedDiffEntry
 ---@return DiffOperation
 local function get_operation(entry)
@@ -98,7 +102,7 @@ end
 
 ---@param path string
 ---@return string|nil, string|nil, DiffFileMode|nil
-local function read_worktree_bytes(path)
+function M.read_worktree_bytes(path)
   local stat, stat_error = vim.uv.fs_lstat(path)
   if stat == nil then
     return nil, stat_error or 'Selected file is no longer available', nil
@@ -159,8 +163,8 @@ end
 ---@param path string
 ---@param mode DiffFileMode|nil
 ---@param operation AsyncOperation|nil
----@return DiffFileVersion|nil, string|nil, string|nil
-local function load_worktree(entry, path, mode, operation)
+---@return DiffFileVersion|nil, string|nil, string|nil, DiffFileMode|nil
+local function load_worktree(entry, path, mode, operation, snapshot)
   if async_operation.is_canceled(operation) then
     return nil, nil, nil
   end
@@ -168,7 +172,7 @@ local function load_worktree(entry, path, mode, operation)
     return nil, nil, 'Submodule content is outside the supported review scope'
   end
   local worktree_path = entry.absolute_path or entry.root .. '/' .. path
-  local bytes, read_error, worktree_mode = read_worktree_bytes(worktree_path)
+  local bytes, read_error, worktree_mode = M.read_worktree_bytes(worktree_path)
   if async_operation.is_canceled(operation) then
     return nil, nil, nil
   end
@@ -184,6 +188,9 @@ local function load_worktree(entry, path, mode, operation)
 
   local kind = file_mode.classify_file_type(mode)
   local diff_status = entry.git_diff and entry.git_diff.status
+  if snapshot then
+    return snapshot_file(path, assert(worktree_mode), bytes, nil, entry.binary), bytes, nil, worktree_mode
+  end
   if
     kind == 'regular'
     and not entry.binary
@@ -202,17 +209,19 @@ local function load_worktree(entry, path, mode, operation)
       content = { kind = 'text', source = 'path', absolute_path = worktree_path },
     },
       bytes,
-      nil
+      nil,
+      worktree_mode
   end
-  return snapshot_file(path, mode, bytes, nil, entry.binary), bytes, nil
+  return snapshot_file(path, mode, bytes, nil, entry.binary), bytes, nil, worktree_mode
 end
 
 ---@param repo GitRepo
 ---@param target_is_worktree boolean
 ---@param entry LoadedDiffEntry
 ---@param operation AsyncOperation|nil
----@return DiffViewModel|nil
-function M.load(repo, target_is_worktree, entry, operation)
+---@param snapshot_worktree boolean|nil
+---@return DiffViewModel|nil, WorktreeFingerprintInput|nil
+function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
   if async_operation.is_canceled(operation) then
     return nil
   end
@@ -220,11 +229,12 @@ function M.load(repo, target_is_worktree, entry, operation)
   local display_path = entry.summary.display_path
   local diff = entry.git_diff
   if diff == nil then
-    local current, _, read_error = load_worktree(entry, assert(entry.untracked_path), nil, operation)
+    local current, bytes, read_error, mode =
+      load_worktree(entry, assert(entry.untracked_path), nil, operation, snapshot_worktree)
     if current == nil then
       return read_error and error_view(operation_name, display_path, read_error) or nil
     end
-    return { operation = 'untracked', current = current }
+    return { operation = 'untracked', current = current }, { bytes = assert(bytes), mode = assert(mode) }
   end
 
   local old, old_bytes
@@ -240,9 +250,10 @@ function M.load(repo, target_is_worktree, entry, operation)
     return { operation = operation_name, old = assert(old) }
   end
 
-  local current, current_bytes, read_error
+  local current, current_bytes, read_error, worktree_mode
   if target_is_worktree then
-    current, current_bytes, read_error = load_worktree(entry, diff.current_path, diff.new_mode, operation)
+    current, current_bytes, read_error, worktree_mode =
+      load_worktree(entry, diff.current_path, diff.new_mode, operation, snapshot_worktree)
   else
     current, current_bytes, read_error =
       load_blob(repo, entry, diff.current_path, diff.new_mode, diff.new_oid, operation)
@@ -250,8 +261,9 @@ function M.load(repo, target_is_worktree, entry, operation)
   if current == nil then
     return read_error and error_view(operation_name, display_path, read_error) or nil
   end
+  local snapshot = worktree_mode and { bytes = assert(current_bytes), mode = worktree_mode } or nil
   if operation_name == 'added' or operation_name == 'unmerged' then
-    return { operation = operation_name, current = current }
+    return { operation = operation_name, current = current }, snapshot
   end
 
   old = assert(old)
@@ -259,7 +271,7 @@ function M.load(repo, target_is_worktree, entry, operation)
   if operation_name == 'modified' and not content_changed and old.mode == current.mode then
     return error_view(operation_name, display_path, 'Selected file no longer differs from its baseline')
   end
-  return { operation = operation_name, old = old, current = current, content_changed = content_changed }
+  return { operation = operation_name, old = old, current = current, content_changed = content_changed }, snapshot
 end
 
 return M

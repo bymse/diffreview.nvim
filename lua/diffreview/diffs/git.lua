@@ -14,8 +14,10 @@ local parsers = require('diffreview.diffs.parsers')
 ---@field root string|nil
 ---@field remotes GitRemote[]
 ---@field branch string|nil
+---@field source_branch_ref string|nil
 ---@field upstream_branch string|nil
 ---@field default_branch_ref string|nil
+---@field storage_path string|nil
 
 local M = {}
 
@@ -173,11 +175,43 @@ function GitRepo:ls_files()
   return run_parsed(cmd, self.dir, parsers.parse_ls_files_output, false)
 end
 
+---@param path string
+---@return GitResult, string|nil
+function GitRepo:unmerged_stages(path)
+  return run_parsed({ 'git', 'ls-files', '--unmerged', '-z', '--', ':(literal)' .. path }, self.dir, function(raw)
+    if raw == '' then
+      return ''
+    end
+    if raw:sub(-1) ~= '\0' then
+      error('invalid index stages')
+    end
+    local stages = {}
+    for record in raw:gmatch('([^%z]+)%z') do
+      local mode, oid, stage, name = record:match('^(%d+) (%x+) ([123])\t(.*)$')
+      if mode == nil or name ~= path or stages[stage] then
+        error('invalid index stages')
+      end
+      stages[stage] = mode .. ':' .. oid
+    end
+    return table.concat({ stages['1'] or '', stages['2'] or '', stages['3'] or '' }, '|')
+  end, false)
+end
+
 ---@return GitResult, GitRepoMeta|nil
 function GitRepo:repo_meta()
   local root_result, root = run_parsed({ 'git', 'rev-parse', '--show-toplevel' }, self.dir, vim.trim, true)
   if not root_result.ok then
     return root_result, nil
+  end
+
+  local path_result, storage_path = run_parsed(
+    { 'git', 'rev-parse', '--path-format=absolute', '--git-path', 'diffreview-nvim' },
+    self.dir,
+    vim.trim,
+    true
+  )
+  if not path_result.ok or storage_path == nil or storage_path:sub(1, 1) ~= '/' then
+    return { ok = false, error = path_result.error or 'Invalid Git storage path' }, nil
   end
 
   local remotes_result, remotes = run_parsed({ 'git', 'remote', '-v' }, self.dir, parsers.parse_remote_output, true)
@@ -186,6 +220,10 @@ function GitRepo:repo_meta()
   end
 
   local _, branch = run_optional_trimmed({ 'git', 'symbolic-ref', '--quiet', '--short', 'HEAD' }, self.dir)
+  local _, source_branch_ref = self:symbolic_ref('HEAD')
+  if source_branch_ref ~= nil and not source_branch_ref:match('^refs/heads/.+$') then
+    source_branch_ref = nil
+  end
   local _, upstream_branch =
     run_optional_trimmed({ 'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}' }, self.dir)
   local _, default_branch_ref = self:symbolic_ref('refs/remotes/origin/HEAD')
@@ -196,8 +234,10 @@ function GitRepo:repo_meta()
   ---@type GitRepoMeta
   local meta = {
     root = root,
+    storage_path = storage_path,
     remotes = remotes,
     branch = branch,
+    source_branch_ref = source_branch_ref,
     upstream_branch = upstream_branch,
     default_branch_ref = default_branch_ref,
   }

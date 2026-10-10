@@ -4,6 +4,7 @@ local async_operation = require('diffreview.async_operation')
 local content = require('diffreview.diffs.content')
 local git = require('diffreview.diffs.git')
 local status = require('diffreview.diffs.status')
+local fingerprint = require('diffreview.diffs.fingerprint')
 
 ---@class DiffLoadOptions
 ---@field cwd string
@@ -28,17 +29,23 @@ local status = require('diffreview.diffs.status')
 ---@field binary boolean
 ---@field root string
 ---@field absolute_path string|nil
+---@field fingerprint string|nil
 
 ---@class ResolvedComparison
 ---@field from_oid string
 ---@field to_oid string|nil
 ---@field target_is_worktree boolean
+---@field baseline string
+---@field target string
+---@field head_oid string
 
 ---@class LoadedDiffs
 ---@field files ChangedFileViewModel[]
 ---@field repo GitRepo
 ---@field entries_by_id table<string, LoadedDiffEntry>
 ---@field comparison ResolvedComparison
+---@field identity ReviewIdentity
+---@field storage_path string
 
 local M = {}
 
@@ -63,7 +70,7 @@ end
 
 ---@class ResolvedRevision
 ---@field oid string
----@field is_branch boolean
+---@field selector string
 
 ---@param repo GitRepo
 ---@param expression string
@@ -74,14 +81,14 @@ local function resolve_revision(repo, expression)
     if not result.ok or oid == nil then
       return nil, result.error
     end
-    return { oid = oid, is_branch = true }, nil
+    return { oid = oid, selector = 'branch:' .. expression }, nil
   elseif expression:match('^refs/') then
     return nil, 'Only local and remote branch refs are supported'
   elseif expression ~= 'HEAD' then
     for _, prefix in ipairs({ 'refs/heads/', 'refs/remotes/' }) do
       local result, oid = repo:rev_parse(prefix .. expression)
       if result.ok and oid ~= nil then
-        return { oid = oid, is_branch = true }, nil
+        return { oid = oid, selector = 'branch:' .. prefix .. expression }, nil
       end
     end
   end
@@ -92,7 +99,7 @@ local function resolve_revision(repo, expression)
   if not result.ok or oid == nil then
     return nil, result.error
   end
-  return { oid = oid, is_branch = false }, nil
+  return { oid = oid, selector = expression == 'HEAD' and 'head:HEAD' or 'commit:' .. oid }, nil
 end
 
 ---@param repo GitRepo
@@ -100,6 +107,11 @@ end
 ---@param options DiffLoadOptions
 ---@return ResolvedComparison|nil, DiffLoadResult|nil
 local function resolve_comparison(repo, meta, options)
+  local head_result, head_oid = repo:rev_parse('HEAD')
+  if not head_result.ok or head_oid == nil then
+    return nil, (failure('revision', head_result.error))
+  end
+  local baseline, from_oid
   if options.from == nil then
     if meta.default_branch_ref == nil then
       return nil, (failure('missing_default_branch', nil))
@@ -108,40 +120,45 @@ local function resolve_comparison(repo, meta, options)
     if not default_resolved.ok or default_oid == nil then
       return nil, (failure('missing_default_branch', default_resolved.error))
     end
-    local head_result, head_oid = repo:rev_parse('HEAD')
-    if not head_result.ok or head_oid == nil then
-      return nil, (failure('revision', head_result.error))
+    baseline, from_oid = 'default:' .. meta.default_branch_ref, default_oid
+  else
+    local from, from_error = resolve_revision(repo, options.from)
+    if from == nil then
+      return nil, (failure('revision', from_error))
     end
-    local merge_result, merge_oid = repo:merge_base(default_oid, head_oid)
-    if not merge_result.ok or merge_oid == nil then
-      return nil, (failure('revision', merge_result.error))
-    end
-    return { from_oid = merge_oid, to_oid = nil, target_is_worktree = true }, nil
-  end
-
-  local from, from_error = resolve_revision(repo, options.from)
-  if from == nil then
-    return nil, (failure('revision', from_error))
+    baseline, from_oid = from.selector, from.oid
   end
   if options.to ~= nil then
     local to, to_error = resolve_revision(repo, options.to)
     if to == nil then
       return nil, (failure('revision', to_error))
     end
-    return { from_oid = from.oid, to_oid = to.oid, target_is_worktree = false }, nil
+    return {
+      from_oid = from_oid,
+      to_oid = to.oid,
+      target_is_worktree = false,
+      baseline = baseline,
+      target = to.selector,
+      head_oid = head_oid,
+    },
+      nil
   end
-  if from.is_branch then
-    local head_result, head_oid = repo:rev_parse('HEAD')
-    if not head_result.ok or head_oid == nil then
-      return nil, (failure('revision', head_result.error))
-    end
-    local merge_result, merge_oid = repo:merge_base(from.oid, head_oid)
+  if baseline:match('^branch:') or baseline:match('^default:') then
+    local merge_result, merge_oid = repo:merge_base(from_oid, head_oid)
     if not merge_result.ok or merge_oid == nil then
       return nil, (failure('revision', merge_result.error))
     end
-    return { from_oid = merge_oid, to_oid = nil, target_is_worktree = true }, nil
+    from_oid = merge_oid
   end
-  return { from_oid = from.oid, to_oid = nil, target_is_worktree = true }, nil
+  return {
+    from_oid = from_oid,
+    to_oid = nil,
+    target_is_worktree = true,
+    baseline = baseline,
+    target = 'worktree:current',
+    head_oid = head_oid,
+  },
+    nil
 end
 
 ---@param diff GitDiff
@@ -177,7 +194,7 @@ function M.load_diffs(options, operation)
   end
   local repo = git.get_repo(root_path)
   local meta_result, meta = repo:repo_meta()
-  if not meta_result.ok or meta == nil or meta.root == nil then
+  if not meta_result.ok or meta == nil or meta.root == nil or meta.storage_path == nil then
     return failure('repository', meta_result.error)
   end
 
@@ -194,7 +211,19 @@ function M.load_diffs(options, operation)
     return failure('git', diff_result.error)
   end
   ---@type LoadedDiffs
-  local loaded = { files = {}, repo = repo, entries_by_id = {}, comparison = comparison }
+  local loaded = {
+    files = {},
+    repo = repo,
+    entries_by_id = {},
+    comparison = comparison,
+    storage_path = meta.storage_path,
+    identity = {
+      repository_root = meta.root,
+      source = meta.source_branch_ref and 'branch:' .. meta.source_branch_ref or 'detached:' .. comparison.head_oid,
+      baseline = comparison.baseline,
+      target = comparison.target,
+    },
+  }
   for _, diff in ipairs(diffs) do
     local summary, id = tracked_summary(diff)
     table.insert(loaded.files, summary)
@@ -234,14 +263,26 @@ function M.load_diffs(options, operation)
       }
     end
   end
+  for _, summary in ipairs(loaded.files) do
+    if async_operation.is_canceled(operation) then
+      return failure('canceled', nil)
+    end
+    local entry = loaded.entries_by_id[summary.id]
+    local value, err = fingerprint.compute(repo, comparison, entry, operation)
+    if value == nil then
+      return failure(async_operation.is_canceled(operation) and 'canceled' or 'filesystem', err)
+    end
+    entry.fingerprint = value
+  end
   return { ok = true, error = nil }, loaded
 end
 
 ---@param loaded LoadedDiffs
 ---@param file_id string
 ---@param operation AsyncOperation|nil
----@return DiffViewModel|nil
-function M.load_selected_view(loaded, file_id, operation)
+---@param snapshot_worktree boolean|nil
+---@return DiffViewModel|nil, WorktreeFingerprintInput|nil
+function M.load_selected_view(loaded, file_id, operation, snapshot_worktree)
   if async_operation.is_canceled(operation) then
     return nil
   end
@@ -249,7 +290,18 @@ function M.load_selected_view(loaded, file_id, operation)
   if entry == nil then
     return nil
   end
-  return content.load(loaded.repo, loaded.comparison.target_is_worktree, entry, operation)
+  return content.load(loaded.repo, loaded.comparison.target_is_worktree, entry, operation, snapshot_worktree)
+end
+
+---@param loaded LoadedDiffs
+---@param file_id string
+---@param operation AsyncOperation
+---@param snapshot WorktreeFingerprintInput|nil
+---@return boolean
+function M.selected_fingerprint_matches(loaded, file_id, operation, snapshot)
+  local entry = loaded.entries_by_id[file_id]
+  local value = fingerprint.compute(loaded.repo, loaded.comparison, entry, operation, snapshot)
+  return value ~= nil and value == entry.fingerprint
 end
 
 return M
