@@ -64,6 +64,26 @@ function M.setup(options)
     vim.api.nvim_del_user_command('ReviewStart')
     error(registration_error, 0)
   end
+  vim.api.nvim_create_user_command('ReviewFiles', function()
+    local ok, err = review_session:toggle_files()
+    if not ok then
+      vim.notify(err or 'Review files unavailable', vim.log.levels.ERROR)
+    end
+  end, { nargs = 0 })
+  vim.api.nvim_create_user_command('ReviewRefresh', function()
+    local ok, err = review_session:refresh()
+    if not ok then
+      vim.notify(err or 'Review refresh unavailable', vim.log.levels.ERROR)
+    end
+  end, { nargs = 0 })
+  for _, entry in ipairs({ { 'ReviewMarkViewed', true }, { 'ReviewMarkUnviewed', false } }) do
+    vim.api.nvim_create_user_command(entry[1], function()
+      local ok, err = review_session:mark_selected(entry[2])
+      if not ok then
+        vim.notify(err or 'Unable to mark review files', vim.log.levels.ERROR)
+      end
+    end, { nargs = 0 })
+  end
   session = review_session
 end
 
@@ -79,6 +99,14 @@ end
 ---@return nil
 function M.stop()
   configured_session():stop()
+end
+
+---@return nil
+function M.refresh()
+  local ok, err = configured_session():refresh()
+  if not ok then
+    vim.notify(err or 'Review refresh unavailable', vim.log.levels.ERROR)
+  end
 end
 
 return M
