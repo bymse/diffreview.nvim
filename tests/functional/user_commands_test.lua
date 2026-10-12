@@ -47,10 +47,19 @@ M.plugin_should_register_commands_when_setup_is_called = function()
   functional_review.ensure_setup()
   assert(vim.fn.exists(':ReviewStart') == 2, 'expected ReviewStart command')
   assert(vim.fn.exists(':ReviewStop') == 2, 'expected ReviewStop command')
-  for _, name in ipairs({ 'ReviewFiles', 'ReviewRefresh', 'ReviewMarkViewed', 'ReviewMarkUnviewed' }) do
+  for _, name in ipairs({ 'ReviewFiles', 'ReviewRefresh', 'ReviewMarkViewed', 'ReviewMarkUnviewed', 'ReviewComment' }) do
     assert(vim.fn.exists(':' .. name) == 2, 'expected ' .. name .. ' command')
   end
   assert(not pcall(diffreview.setup, {}), 'expected setup to remain single-use')
+end
+
+M.review_comment_should_leave_buffers_unchanged_when_review_is_inactive = function()
+  functional_review.ensure_setup()
+  local buffers = vim.api.nvim_list_bufs()
+  pcall(function()
+    vim.cmd('ReviewComment')
+  end)
+  assert(vim.deep_equal(buffers, vim.api.nvim_list_bufs()))
 end
 
 M.review_refresh_should_report_unavailable_when_review_is_inactive = function()

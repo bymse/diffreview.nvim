@@ -31,3 +31,17 @@ Judge result: PASS after two repair passes; compliance, architecture, simplicity
 Important decisions: returning anchors automatically clear stale status; non-text differs from read failure; all text-comment files need validated snapshots. Review found and fixed selected-pane cleanup closing the tab on empty refresh, with a command-driven regression.
 
 Follow-up risks: preloaded refresh is asynchronous and returns request acceptance. Startup cancellation during saved-comment loading is indirectly covered; request-currency guards are intact. Comment-only list presentation belongs to spec 004.
+
+## 003-comment-editor — 2026-10-12
+
+Status: PASS
+
+Changed files: `lua/diffreview/init.lua`, `lua/diffreview/review.lua`, `lua/diffreview/ui/init.lua`, `lua/diffreview/ui/side_by_side.lua`, new `lua/diffreview/ui/comment_editor.lua`; focused functional editor, lifecycle and by-ID suites, registrations, command and shared mutation tests; spec contract and evidence included.
+
+Verification: independent lint, format, format-check, full tests and diff-check passed; 50 unit, 197 integration, 78 functional (325). Evidence: `.agent-runs/003-comment-editor/independent-verification.md`.
+
+Judge result: PASS after functional-interface coverage repair and report-only correction; compliance 5/5, all other scores 4/5.
+
+Important decisions: one editor, write remains open and pins ID, dirty/pending guards, pinned location/owner, actual visible-text matching, detached listed draft preservation on tab closure. Product-command lifecycle tests replace internal-state assertions.
+
+Follow-up risks: detached drafts are retained editor buffers rather than crash-recovery storage. A clean creation draft surviving refresh rejects obsolete-comparison writes and must be reopened.

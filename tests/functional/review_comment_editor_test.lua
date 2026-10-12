@@ -1,0 +1,194 @@
+local functional_review = require('helpers.functional_review')
+local diffs = require('diffreview.diffs')
+local storage = require('diffreview.storage')
+
+local M = {}
+local base = { 'before', 'anchor', 'range', 'base' }
+local current = { 'before', 'anchor', 'range', 'changed' }
+
+local function prepare(repo)
+  repo:write_file('file.txt', base)
+  repo:add('file.txt')
+  repo:commit('base')
+  repo:write_file('file.txt', current)
+  return { from = 'HEAD' }
+end
+
+local function write(body)
+  local buffer = vim.api.nvim_get_current_buf()
+  assert(vim.bo[buffer].buftype == 'acwrite')
+  vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { body })
+  vim.cmd('write')
+  assert(
+    vim.wait(2000, function()
+      return not vim.bo[buffer].modified
+    end),
+    'expected successful comment write'
+  )
+  return buffer
+end
+
+M.review_comment_should_persist_cursor_ranges_and_file_note_when_written_and_restarted = function()
+  functional_review.with_review(prepare, function(repo)
+    local result, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
+    assert(result.ok and loaded)
+    local list = functional_review.wait_for_list(1)
+    vim.cmd('ReviewComment')
+    local editor = write('file note')
+    vim.cmd('close')
+    assert(vim.wait(1000, function()
+      return not vim.api.nvim_buf_is_valid(editor)
+    end))
+    functional_review.select_path(list, 'file.txt')
+    functional_review.wait_for_two_sided_current(repo, 'file.txt', base, current)
+    local main = vim.api.nvim_get_current_win()
+    local old
+    for _, window in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if window ~= main then
+        old = window
+      end
+    end
+    vim.api.nvim_win_set_cursor(main, { 2, 0 })
+    vim.cmd('ReviewComment')
+    write('cursor')
+    vim.cmd('close')
+    vim.wait(20)
+    for _, window in ipairs({ main, old }) do
+      vim.api.nvim_set_current_win(window)
+      vim.api.nvim_win_set_cursor(window, { 2, 0 })
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('Vj:ReviewComment<CR>', true, false, true), 'xt', false)
+      write(window == main and 'current range' or 'old range')
+      vim.cmd('close')
+      vim.wait(20)
+    end
+    local saved = assert(storage.load(loaded.storage_path, loaded.identity))
+    assert(#saved.comments == 4)
+    assert(saved.comments[1].side == nil)
+    assert(
+      saved.comments[2].side == 'current' and saved.comments[2].start_line == 2 and saved.comments[2].end_line == 2
+    )
+    for index, side in ipairs({ 'current', 'old' }) do
+      local record = saved.comments[index + 2]
+      assert(record.side == side and record.start_line == 2 and record.end_line == 3)
+      assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
+    end
+    vim.cmd('ReviewStop')
+    vim.cmd('ReviewStart HEAD')
+    assert(vim.wait(2000, function()
+      return vim.fn.getqflist({ id = 0 }).id ~= list
+    end))
+    functional_review.wait_for_list(1)
+    assert(vim.deep_equal(assert(storage.load(loaded.storage_path, loaded.identity)).comments, saved.comments))
+  end)
+end
+
+M.review_comment_should_preserve_draft_and_checkpoint_when_disk_or_display_changes = function()
+  functional_review.with_review(prepare, function(repo)
+    local _, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
+    assert(loaded)
+    local list = functional_review.wait_for_list(1)
+    functional_review.select_path(list, 'file.txt')
+    functional_review.wait_for_two_sided_current(repo, 'file.txt', base, current)
+    local main = vim.api.nvim_get_current_win()
+    local displayed = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(displayed, 1, 2, false, { 'unsaved display' })
+    vim.cmd('ReviewComment')
+    local editor = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(editor, 0, -1, false, { 'draft' })
+    vim.cmd('write')
+    vim.wait(200)
+    assert(vim.bo[editor].modified and #assert(storage.load(loaded.storage_path, loaded.identity)).comments == 0)
+    vim.api.nvim_buf_set_lines(displayed, 0, -1, false, current)
+    vim.bo[displayed].modified = false
+    repo:write_file('file.txt', { 'external change' })
+    vim.cmd('write')
+    vim.wait(200)
+    assert(vim.bo[editor].modified and #assert(storage.load(loaded.storage_path, loaded.identity)).comments == 0)
+    assert(vim.deep_equal(vim.api.nvim_buf_get_lines(editor, 0, -1, false), { 'draft' }))
+    vim.cmd('close!')
+    vim.wait(20)
+    vim.api.nvim_set_current_win(main)
+    vim.api.nvim_win_set_buf(main, vim.api.nvim_create_buf(true, false))
+    local before = vim.api.nvim_get_current_buf()
+    pcall(function()
+      vim.cmd('ReviewComment')
+    end)
+    assert(vim.api.nvim_get_current_buf() == before)
+    vim.cmd('new')
+    before = vim.api.nvim_get_current_buf()
+    pcall(function()
+      vim.cmd('ReviewComment')
+    end)
+    assert(vim.api.nvim_get_current_buf() == before)
+    vim.fn.setqflist({}, ' ', { title = 'unrelated', items = { { text = 'other' } } })
+    vim.cmd('copen')
+    before = vim.api.nvim_get_current_buf()
+    pcall(function()
+      vim.cmd('ReviewComment')
+    end)
+    assert(vim.api.nvim_get_current_buf() == before)
+  end)
+end
+
+M.review_comment_should_use_old_text_and_file_notes_when_deleted_or_nontext_is_presented = function()
+  functional_review.with_review(function(repo)
+    repo:write_file('deleted.txt', { 'old text' })
+    repo:write_file('mode.txt', { 'unchanged' })
+    repo:add('deleted.txt')
+    repo:add('mode.txt')
+    repo:commit('base')
+    assert(vim.fn.delete(repo.cwd .. '/deleted.txt') == 0)
+    assert(vim.uv.fs_chmod(repo.cwd .. '/mode.txt', 493))
+    return { from = 'HEAD' }
+  end, function(repo)
+    local _, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
+    assert(loaded)
+    local list = functional_review.wait_for_list(2)
+    functional_review.select_path(list, 'deleted.txt')
+    functional_review.wait_for_one_sided_old('old text')
+    vim.cmd('ReviewComment')
+    write('deleted side note')
+    vim.cmd('close')
+    vim.wait(20)
+    vim.cmd('ReviewFiles')
+    functional_review.select_path(list, 'mode.txt')
+    functional_review.wait_for_information({ 'Mode-only change' })
+    vim.cmd('ReviewComment')
+    write('mode note')
+    local saved = assert(storage.load(loaded.storage_path, loaded.identity))
+    assert(#saved.comments == 2)
+    assert(saved.comments[1].side == 'old' and saved.comments[1].file_id == 'stored:deleted.txt')
+    assert(vim.deep_equal(saved.comments[1].anchor_lines, { 'old text' }))
+    assert(saved.comments[2].side == nil and saved.comments[2].file_id == 'stored:mode.txt')
+  end)
+end
+
+M.review_comment_should_block_refresh_and_stop_when_command_draft_is_dirty = function()
+  functional_review.with_review(prepare, function(repo)
+    local _, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
+    assert(loaded)
+    local list = functional_review.wait_for_list(1)
+    local tab = vim.api.nvim_get_current_tabpage()
+    vim.cmd('ReviewComment')
+    local buffer = vim.api.nvim_get_current_buf()
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { 'uncommitted' })
+    local path = storage.path(loaded.storage_path, loaded.identity)
+    local raw = vim.fn.readfile(path)[1]
+    pcall(function()
+      vim.cmd('ReviewRefresh')
+    end)
+    pcall(function()
+      vim.cmd('ReviewStop')
+    end)
+    assert(vim.api.nvim_tabpage_is_valid(tab) and vim.fn.getqflist({ id = 0 }).id == list)
+    assert(vim.fn.readfile(path)[1] == raw and vim.bo[buffer].modified)
+    vim.cmd('close!')
+    assert(vim.wait(1000, function()
+      return not vim.api.nvim_buf_is_valid(buffer)
+    end))
+    vim.cmd('ReviewStop')
+    assert(not vim.api.nvim_tabpage_is_valid(tab))
+  end)
+end
+
+return M

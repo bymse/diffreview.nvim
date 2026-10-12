@@ -5,6 +5,7 @@ local storage = require('diffreview.storage')
 local review_progress = require('diffreview.review_progress')
 local quickfix = require('diffreview.ui.quickfix')
 local comments = require('diffreview.comments')
+local comment_editor = require('diffreview.ui.comment_editor')
 
 ---@class StartingReview
 ---@field kind 'starting'
@@ -21,6 +22,7 @@ local comments = require('diffreview.comments')
 ---@field progress ReviewProgress
 ---@field options DiffLoadOptions
 ---@field refresh_request AsyncOperation|nil
+---@field editor CommentEditor|nil
 ---@alias ReviewState { kind: 'idle' }|StartingReview|ActiveReview
 
 local M = {}
@@ -73,6 +75,10 @@ local function select_file(session, file_id)
   if active.kind ~= 'active' then
     return
   end
+  if active.editor and active.editor.saving then
+    vim.notify('Comment save is pending', vim.log.levels.ERROR)
+    return
+  end
 
   if active.refresh_request then
     async_operation.cancel(active.refresh_request)
@@ -92,7 +98,7 @@ local function select_file(session, file_id)
       if diff == nil or not is_selection_current(session, active, request) then
         return
       end
-      active.ui:display_diff_side_by_side(diff, session.config.layout)
+      active.ui:display_diff_side_by_side(diff, session.config.layout, nil, file_id)
       if diff.operation ~= 'error' and is_selection_current(session, active, request) then
         active.selected_id = file_id
         active.selected_presented = true
@@ -122,6 +128,9 @@ local function stop_review(session, tab_closed)
   session.state = { kind = 'idle' }
   async_operation.cancel(state.operation)
   if state.kind == 'active' then
+    if state.editor then
+      state.editor:cleanup()
+    end
     state.selection_request = nil
     if state.refresh_request then
       async_operation.cancel(state.refresh_request)
@@ -302,6 +311,9 @@ function ReviewSession:refresh(preloaded)
   if active.kind ~= 'active' or async_operation.is_canceled(active.operation) then
     return false, 'Review refresh unavailable'
   end
+  if active.editor and active.editor:blocked() then
+    return false, 'Save or close the comment editor before refreshing'
+  end
   if active.refresh_request then
     async_operation.cancel(active.refresh_request)
   end
@@ -366,7 +378,7 @@ function ReviewSession:refresh(preloaded)
         active.ui:update_review_files(loaded.files)
         if diff ~= nil then
           active.selected_presented = diff.operation ~= 'error'
-          active.ui:refresh_selected_diff(diff, self.config.layout)
+          active.ui:refresh_selected_diff(diff, self.config.layout, selected)
         end
         if drawer_open and not active.ui:files_open() then
           active.ui:show_review_files(loaded.files)
@@ -513,6 +525,7 @@ local function mutate_comment(session, action, id, body, location)
       and active.loaded == loaded
       and active.progress == progress
       and active.selected_id == selected
+      and (active.editor == nil or not active.editor.saving or active.editor:valid())
       and (type(location) ~= 'table' or location.side == nil or active.selected_presented)
   end
   if not current() then
@@ -553,6 +566,9 @@ local function mutate_comment(session, action, id, body, location)
         return nil, 'Comment side has no comparison text'
       end
       lines = version.content.lines
+      if not active.ui:comment_text_matches(location.file_id, location.side, lines) then
+        return nil, 'Displayed text does not match the comparison'
+      end
     end
   end
   local records, result, err = comments.apply(progress.comments, action, id, body, location, display_path, lines)
@@ -625,10 +641,118 @@ function ReviewSession:reattach_comment(id, location)
   return result, err
 end
 
+---@param session ReviewSession
+---@param target CommentLocation
+---@param id string|nil
+---@param body string
+---@return boolean|nil, string|nil
+local function open_editor(session, target, id, body)
+  local active = session.state
+  if active.kind ~= 'active' or async_operation.is_canceled(active.operation) then
+    return nil, 'No active review'
+  end
+  if active.selection_request or active.refresh_request then
+    return nil, 'Review context is changing'
+  end
+  local editor = active.editor
+  if editor then
+    if
+      editor:valid() and ((id == nil and vim.deep_equal(editor.target, target)) or (id ~= nil and editor.id == id))
+    then
+      editor:focus()
+      return true, nil
+    end
+    if editor:blocked() then
+      return nil, 'Save or close the current comment editor'
+    end
+    if editor:valid() then
+      editor:cleanup()
+    end
+  end
+  local comparison = active.loaded
+  active.editor = comment_editor.open(assert(active.ui.tabpage), target, id, body, function(draft, text)
+    if
+      session.state ~= active
+      or async_operation.is_canceled(active.operation)
+      or draft.detached
+      or active.editor ~= draft
+    then
+      return nil, 'Comment editor no longer owns an active review'
+    end
+    if draft.id == nil and active.loaded ~= comparison then
+      return nil, 'Comment comparison changed; open a new editor'
+    end
+    local result, err
+    if vim.trim(text) == '' then
+      if draft.id ~= nil then
+        result, err = session:delete_comment(draft.id)
+        if not result then
+          return nil, err
+        end
+        draft.id = nil
+      end
+      return true, nil
+    elseif draft.id ~= nil then
+      result, err = session:edit_comment(draft.id, text)
+    else
+      result, err = session:add_comment(draft.target, text)
+    end
+    if not result then
+      return nil, err
+    end
+    ---@cast result ReviewComment
+    draft.id = result.id
+    return true, nil
+  end)
+  return true, nil
+end
+
+---@param first integer|nil
+---@param last integer|nil
+---@return boolean|nil, string|nil
+function ReviewSession:open_comment_editor(first, last)
+  local active = self.state
+  if active.kind ~= 'active' then
+    return nil, 'No active review'
+  end
+  local location = active.ui:comment_context(first, last)
+  if location == nil or active.loaded.entries_by_id[location.file_id] == nil then
+    return nil, 'No owned review location'
+  end
+  if location.side ~= nil and (not active.selected_presented or active.selected_id ~= location.file_id) then
+    return nil, 'No presented review text'
+  end
+  return open_editor(self, location, nil, '')
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+function ReviewSession:edit_comment_by_id(id)
+  local active = self.state
+  if active.kind ~= 'active' then
+    return nil, 'No active review'
+  end
+  for _, record in ipairs(active.progress.comments) do
+    if record.id == id then
+      return open_editor(self, {
+        file_id = record.file_id,
+        side = record.side,
+        start_line = record.start_line,
+        end_line = record.end_line,
+      }, id, record.body)
+    end
+  end
+  return nil, 'Unknown comment ID'
+end
+
 ---@return nil
 function ReviewSession:stop()
   if self.state.kind == 'idle' then
     vim.notify('No review is active', vim.log.levels.INFO)
+    return
+  end
+  if self.state.kind == 'active' and self.state.editor and self.state.editor:blocked() then
+    vim.notify('Save or close the comment editor before stopping', vim.log.levels.ERROR)
     return
   end
   stop_review(self, false)

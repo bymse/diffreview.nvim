@@ -45,6 +45,26 @@ local function checkpoint(session)
   return path, vim.fn.readfile(path)[1]
 end
 
+M.comment_anchors_should_reject_unsaved_display_when_adding_or_reattaching = function()
+  with_review(function(session)
+    select(session, file_id)
+    local note = assert(session:add_comment({ file_id = file_id }, 'file note'))
+    local path, raw = checkpoint(session)
+    local buffer = vim.api.nvim_get_current_buf()
+    local original = vim.api.nvim_buf_get_lines(buffer, 0, -1, false)
+    vim.api.nvim_buf_set_lines(buffer, 1, 2, false, { 'unsaved' })
+    local location = { file_id = file_id, side = 'current', start_line = 2, end_line = 2 }
+    assert(not session:add_comment(location, 'misleading'))
+    assert(not session:reattach_comment(note.id, location))
+    assert(vim.fn.readfile(path)[1] == raw)
+    assert(#session.state.progress.comments == 1 and session.state.progress.comments[1].side == nil)
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, false, original)
+    vim.bo[buffer].modified = false
+    assert(session:reattach_comment(note.id, location))
+    assert(vim.deep_equal(session.state.progress.comments[1].anchor_lines, { 'same' }))
+  end)
+end
+
 M.add_comment_should_persist_management_and_viewed_progress_when_review_restarts = function()
   with_review(function(session, repo)
     assert(session:mark_files({ file_id }, true))

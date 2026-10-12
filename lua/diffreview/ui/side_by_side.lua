@@ -204,7 +204,48 @@ function M.display_side_by_side(ui, diff, layout)
     state.decorated_buffer = buffer
   end
   state.active_layout = layout
+  state.main_buffer = buffer
+  state.companion_buffer = old_buffer
+  state.main_side = nil
+  if buffer ~= state.information_buffer then
+    state.main_side = diff.operation == 'deleted' and 'old' or 'current'
+  end
   vim.api.nvim_set_current_win(state.main_window)
+end
+
+---@param ui ReviewUi
+---@param window integer
+---@return string|nil, 'old'|'current'|nil
+function M.comment_context(ui, window)
+  local state = ui.side_by_side
+  if not has_owned_window(state, window, ui.instance_id) then
+    return nil, nil
+  end
+  local buffer = vim.api.nvim_win_get_buf(window)
+  if window == state.main_window and buffer == state.main_buffer then
+    return state.presented_id, state.main_side
+  elseif window == state.companion_window and buffer == state.companion_buffer then
+    return state.presented_id, 'old'
+  end
+  return nil, nil
+end
+
+---@param ui ReviewUi
+---@param id string
+---@param side 'old'|'current'
+---@param lines string[]
+---@return boolean
+function M.text_matches(ui, id, side, lines)
+  local state = ui.side_by_side
+  local window = side == state.main_side and state.main_window or state.companion_window
+  if window == nil or not vim.api.nvim_win_is_valid(window) then
+    return false
+  end
+  local presented, actual_side = M.comment_context(ui, window)
+  local expected = #lines == 0 and { '' } or lines
+  return presented == id
+    and actual_side == side
+    and vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(window), 0, -1, false), expected)
 end
 
 ---@param ui ReviewUi
@@ -235,6 +276,10 @@ function M.cleanup(ui)
   state.companion_window = nil
   state.decorated_buffer = nil
   state.active_layout = nil
+  state.main_buffer = nil
+  state.companion_buffer = nil
+  state.main_side = nil
+  state.presented_id = nil
 end
 
 ---@param ui ReviewUi

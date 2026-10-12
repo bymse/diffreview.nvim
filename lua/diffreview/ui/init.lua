@@ -14,6 +14,10 @@ local M = {}
 ---@field decorated_buffer integer|nil
 ---@field active_layout ViewLayout|nil
 ---@field native_diff NativeDiffState
+---@field main_buffer integer|nil
+---@field companion_buffer integer|nil
+---@field main_side 'old'|'current'|nil
+---@field presented_id string|nil
 
 ---@class ReviewUiHandlers
 ---@field on_file_selected fun(file_id: string): nil
@@ -107,6 +111,38 @@ function ReviewUi:mark_context()
   return 'diff', nil
 end
 
+---@param first integer|nil
+---@param last integer|nil
+---@return CommentLocation|nil
+function ReviewUi:comment_context(first, last)
+  if not in_review_tab(self) then
+    return nil
+  end
+  local window = vim.api.nvim_get_current_win()
+  if vim.fn.getwininfo(window)[1].quickfix == 1 then
+    local row = vim.api.nvim_win_get_cursor(window)[1]
+    local id = quickfix.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
+    return id and { file_id = id } or nil
+  end
+  local id, side = side_by_side.comment_context(self, window)
+  if id == nil then
+    return nil
+  end
+  if side == nil then
+    return { file_id = id }
+  end
+  local line = vim.api.nvim_win_get_cursor(window)[1]
+  return { file_id = id, side = side, start_line = first or line, end_line = last or line }
+end
+
+---@param id string
+---@param side 'old'|'current'
+---@param lines string[]
+---@return boolean
+function ReviewUi:comment_text_matches(id, side, lines)
+  return side_by_side.text_matches(self, id, side, lines)
+end
+
 ---@param files ChangedFileViewModel[]
 ---@return boolean
 function ReviewUi:toggle_review_files(files)
@@ -142,16 +178,18 @@ end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
+---@param file_id string|nil
 ---@return nil
-function ReviewUi:refresh_selected_diff(diff, layout)
-  self:display_diff_side_by_side(diff, layout, true)
+function ReviewUi:refresh_selected_diff(diff, layout, file_id)
+  self:display_diff_side_by_side(diff, layout, true, file_id)
 end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
 ---@param keep_drawer boolean|nil
+---@param file_id string|nil
 ---@return nil
-function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
+function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
   validator.validate(diff)
   if layout ~= 'horizontal' and layout ~= 'vertical' then
     error('Invalid view layout: ' .. tostring(layout))
@@ -162,6 +200,7 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
       quickfix.close_drawer(self.quickfix_id, self.instance_id)
     end
     side_by_side.display_side_by_side(self, diff, layout)
+    self.side_by_side.presented_id = diff.operation ~= 'error' and file_id or nil
   end)
 end
 

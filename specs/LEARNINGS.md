@@ -21,3 +21,13 @@ Impact: refresh, including preloaded refresh, is coroutine-based and returns acc
 Use in future specs: replace displayed disposable buffers before deleting snapshots so cleanup cannot close the owning review tab. Preserve the replacement buffer during cleanup. Command tests can seed validated checkpoints and observe public commands; wait for a new owned quickfix ID on restart. Resolve abbreviated Git OIDs before manipulating loose-object fixtures.
 
 Source: `.agent-runs/002-anchor-reconciliation/learnings-draft.md`, verified spec 002 and command-driven lifecycle regression.
+
+## 2026-10-12 — Owned editor lifecycle
+
+Finding: text anchors require actual owned-buffer text matching in addition to immutable snapshot/fingerprint validation. `BufWinLeave` cleanup must allow tab-closure ownership resolution; dirty listed acwrite buffers detach rather than disappear. Pending saves block selection/refresh/stop/replacement and guard owner/buffer validity after yielding.
+
+Impact: comment-list editing should reuse `edit_comment_by_id(id)` and creation should reuse `open_comment_editor(first?, last?)`. Targets and owners stay pinned; repeat writes edit the saved ID. Blank deletion clears that ID. Presented identity is explicit on UI display/refresh.
+
+Use in future specs: functional tests use configured commands, native selection, buffers and checkpoints; narrowly scoped by-ID tests cover the public entry point lacking a command. Wait for checkpoint adoption, not merely an unmodified buffer, for async saves. Plain `text` filetype avoids isolated-runtime Markdown parser requirements. Summarize verification and link captured output instead of copying transient progress counters.
+
+Source: `.agent-runs/003-comment-editor/learnings-draft.md`, verified spec 003.
