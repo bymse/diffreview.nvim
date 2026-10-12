@@ -3,6 +3,7 @@ local diff_information = require('diffreview.ui.diff_information')
 local native_diff = require('diffreview.ui.native_diff')
 local scratch_buffer = require('diffreview.ui.scratch_buffer')
 local statusline = require('diffreview.ui.statusline')
+local comment_decorations = require('diffreview.ui.comment_decorations')
 
 local M = {}
 
@@ -31,6 +32,7 @@ end
 ---@param active_window_lost boolean
 ---@return NativeDiffTransition
 local function clear_previous_presentation(state, instance_id, release_active, active_window_lost)
+  comment_decorations.clear(state.comments)
   if state.decorated_buffer ~= nil and vim.api.nvim_buf_is_valid(state.decorated_buffer) then
     decorations.clear(state.decorated_buffer, state.namespace)
   end
@@ -306,6 +308,57 @@ function M.clear(ui)
     state.information_buffer = buffer
     state.main_window = main
   end
+end
+
+---@param ui ReviewUi
+---@param records ReviewComment[]
+---@return nil
+function M.update_comments(ui, records)
+  local state = ui.side_by_side
+  comment_decorations.clear(state.comments)
+  for _, window in ipairs({ state.main_window, state.companion_window }) do
+    if has_owned_window(state, window, ui.instance_id) then
+      local id, side = M.comment_context(ui, window)
+      if id then
+        comment_decorations.render(
+          state.comments,
+          vim.api.nvim_win_get_buf(window),
+          records,
+          id,
+          side,
+          window == state.main_window
+        )
+      end
+    end
+  end
+end
+
+---@param ui ReviewUi
+---@param record ReviewComment
+---@return boolean
+function M.focus_comment(ui, record)
+  local state = ui.side_by_side
+  local window = state.main_window
+  if record.side and not record.stale then
+    window = record.side == state.main_side and state.main_window or state.companion_window
+  end
+  if not has_owned_window(state, window, ui.instance_id) then
+    return false
+  end
+  ---@cast window integer
+  local id, side = M.comment_context(ui, window)
+  if id ~= record.file_id or (record.side and not record.stale and side ~= record.side) then
+    return false
+  end
+  vim.api.nvim_set_current_win(window)
+  if
+    record.side
+    and not record.stale
+    and record.start_line <= vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(window))
+  then
+    vim.api.nvim_win_set_cursor(window, { record.start_line, 0 })
+  end
+  return true
 end
 
 return M

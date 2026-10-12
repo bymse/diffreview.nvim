@@ -23,6 +23,7 @@ local comment_editor = require('diffreview.ui.comment_editor')
 ---@field options DiffLoadOptions
 ---@field refresh_request AsyncOperation|nil
 ---@field editor CommentEditor|nil
+---@field pending_attachment {id: string}|nil
 ---@alias ReviewState { kind: 'idle' }|StartingReview|ActiveReview
 
 local M = {}
@@ -70,7 +71,7 @@ end
 ---@param session ReviewSession
 ---@param file_id string
 ---@return nil
-local function select_file(session, file_id)
+local function select_file(session, file_id, comment)
   local active = session.state
   if active.kind ~= 'active' then
     return
@@ -102,6 +103,10 @@ local function select_file(session, file_id)
       if diff.operation ~= 'error' and is_selection_current(session, active, request) then
         active.selected_id = file_id
         active.selected_presented = true
+        active.ui:update_review_comments(active.progress.comments)
+        if comment then
+          active.ui:focus_comment(comment)
+        end
       elseif is_selection_current(session, active, request) then
         active.selected_presented = false
       end
@@ -240,7 +245,11 @@ function ReviewSession:start(options)
         return
       end
       local progress = review_progress.reconcile(previous, loaded, views)
-      if (#loaded.files > 0 or previous ~= nil) and is_start_operation_current(self, operation) then
+      if
+        (#loaded.files > 0 or previous ~= nil)
+        and not vim.deep_equal(previous, progress)
+        and is_start_operation_current(self, operation)
+      then
         local saved, save_error = storage.save(loaded.storage_path, progress)
         if not saved then
           fail_start(self, operation, review_ui, save_error or 'Unable to save review state')
@@ -253,6 +262,12 @@ function ReviewSession:start(options)
         return
       end
       review_ui = ui.get_ui({
+        on_comment_action = function(key, id)
+          local accepted, action_error = self:comment_action(key, id)
+          if not accepted then
+            vim.notify(action_error or 'Comment action unavailable', vim.log.levels.ERROR)
+          end
+        end,
         on_file_selected = function(file_id)
           select_file(self, file_id)
         end,
@@ -287,6 +302,10 @@ function ReviewSession:start(options)
         options = options_copy,
         refresh_request = nil,
       }
+      review_ui:update_review_comments(progress.comments)
+      if #loaded.files == 0 then
+        review_ui:show_review_comments(progress.comments)
+      end
     end, debug.traceback)
     if not ok then
       fail_start(self, operation, review_ui, tostring(err))
@@ -318,6 +337,7 @@ function ReviewSession:refresh(preloaded)
     async_operation.cancel(active.refresh_request)
   end
   active.selection_request = nil
+  active.pending_attachment = nil
   local request = async_operation.new()
   active.refresh_request = request
   local function current()
@@ -366,23 +386,29 @@ function ReviewSession:refresh(preloaded)
       if not current() then
         return
       end
-      local drawer_open = active.ui:files_open()
+      local files_open, comments_open = active.ui:files_open(), active.ui:comments_open()
       active.loaded = loaded
       active.progress = candidate
+      active.pending_attachment = nil
       active.selected_id = selected ~= nil and loaded.entries_by_id[selected] ~= nil and selected or nil
       if selected ~= nil and diff == nil then
         active.selected_presented = false
         active.ui:clear_selected_diff()
+      end
+      active.ui:update_review_files(loaded.files)
+      if diff ~= nil then
+        active.selected_presented = diff.operation ~= 'error'
+        active.ui:refresh_selected_diff(diff, self.config.layout, selected)
+      end
+      active.ui:update_review_comments(candidate.comments)
+      if #loaded.files == 0 and #candidate.comments > 0 then
+        active.ui:show_review_comments(candidate.comments)
+      elseif comments_open then
+        active.ui:show_review_comments(candidate.comments)
+      elseif files_open then
         active.ui:show_review_files(loaded.files)
-      else
-        active.ui:update_review_files(loaded.files)
-        if diff ~= nil then
-          active.selected_presented = diff.operation ~= 'error'
-          active.ui:refresh_selected_diff(diff, self.config.layout, selected)
-        end
-        if drawer_open and not active.ui:files_open() then
-          active.ui:show_review_files(loaded.files)
-        end
+      elseif selected ~= nil and diff == nil and #candidate.comments == 0 then
+        active.ui:show_review_files(loaded.files)
       end
     end, debug.traceback)
     if not ok and current() then
@@ -399,6 +425,92 @@ function ReviewSession:refresh(preloaded)
     vim.notify(tostring(err), vim.log.levels.ERROR)
   end
   return true, nil
+end
+
+---@return boolean, string|nil
+function ReviewSession:toggle_comments()
+  local active = self.state
+  if active.kind ~= 'active' or not active.ui:toggle_review_comments(active.progress.comments) then
+    return false, 'Review comments unavailable'
+  end
+  return true, nil
+end
+
+---@param key string
+---@param id string
+---@return boolean|nil, string|nil
+function ReviewSession:comment_action(key, id)
+  local active = self.state
+  if active.kind ~= 'active' or (active.editor and active.editor:blocked()) then
+    return nil, 'Save or close the comment editor'
+  end
+  local record
+  for _, candidate in ipairs(active.progress.comments) do
+    if candidate.id == id then
+      record = candidate
+      break
+    end
+  end
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  if key == '<CR>' then
+    if active.loaded.entries_by_id[record.file_id] then
+      select_file(self, record.file_id, vim.deepcopy(record))
+    end
+  elseif key == 'e' then
+    return self:edit_comment_by_id(id)
+  elseif key == 'd' then
+    return self:delete_comment(id)
+  elseif key == 'r' then
+    local result, err
+    if record.resolved then
+      result, err = self:reopen_comment(id)
+    else
+      result, err = self:resolve_comment(id)
+    end
+    return result ~= nil, err
+  elseif key == 'a' then
+    if not record.stale then
+      return nil, 'Only stale comments need attachment'
+    end
+    active.pending_attachment = { id = id }
+  else
+    return nil, 'Unknown comment action'
+  end
+  return true, nil
+end
+
+---@param first integer|nil
+---@param last integer|nil
+---@param cancel boolean
+---@return boolean|nil, string|nil
+function ReviewSession:attach_comment(first, last, cancel)
+  local active = self.state
+  if active.kind ~= 'active' or (active.editor and active.editor:blocked()) then
+    return nil, 'Save or close the comment editor'
+  end
+  if cancel then
+    active.pending_attachment = nil
+    return true, nil
+  end
+  local source = active.pending_attachment
+  if not source then
+    return nil, 'No pending attachment'
+  end
+  local id = source.id
+  local location = active.ui:comment_context(first, last)
+  if not location then
+    return nil, 'No owned review location'
+  end
+  local running = coroutine.create(function()
+    local result, err = self:reattach_comment(id, location)
+    if not result then
+      vim.notify(err or 'Attachment failed', vim.log.levels.ERROR)
+    end
+  end)
+  local ok, err = coroutine.resume(running)
+  return ok, err
 end
 
 ---@return boolean, string|nil
@@ -502,6 +614,7 @@ function ReviewSession:mark_files(file_ids, viewed)
     end
   end
   active.ui:update_review_files(active.loaded.files)
+  active.ui:update_review_comments(active.progress.comments)
   return true, nil
 end
 
@@ -511,12 +624,16 @@ end
 ---@param body string|nil
 ---@param location CommentLocation|nil
 ---@return ReviewComment|boolean|nil, string|nil
-local function mutate_comment(session, action, id, body, location)
+local function mutate_comment(session, action, id, body, location, editor_write)
   local active = session.state
   if active.kind ~= 'active' then
     return nil, 'No active review'
   end
+  if not editor_write and active.editor and active.editor:blocked() then
+    return nil, 'Save or close the comment editor'
+  end
   local loaded, progress, selected = active.loaded, active.progress, active.selected_id
+  local pending = active.pending_attachment
   local function current()
     return session.state == active
       and not async_operation.is_canceled(active.operation)
@@ -525,6 +642,8 @@ local function mutate_comment(session, action, id, body, location)
       and active.loaded == loaded
       and active.progress == progress
       and active.selected_id == selected
+      and (action ~= 'reattach' or active.pending_attachment == pending)
+      and (editor_write or active.editor == nil or not active.editor:blocked())
       and (active.editor == nil or not active.editor.saving or active.editor:valid())
       and (type(location) ~= 'table' or location.side == nil or active.selected_presented)
   end
@@ -585,6 +704,17 @@ local function mutate_comment(session, action, id, body, location)
     return nil, save_error
   end
   active.progress = candidate
+  if (action == 'delete' or action == 'reattach') and id ~= nil then
+    if active.pending_attachment and active.pending_attachment.id == id then
+      active.pending_attachment = nil
+    end
+    if not editor_write and active.editor and active.editor.id == id then
+      active.editor:cleanup()
+      active.editor = nil
+    end
+  end
+  active.ui:update_review_files(active.loaded.files)
+  active.ui:update_review_comments(candidate.comments)
   return result, nil
 end
 
@@ -685,7 +815,7 @@ local function open_editor(session, target, id, body)
     local result, err
     if vim.trim(text) == '' then
       if draft.id ~= nil then
-        result, err = session:delete_comment(draft.id)
+        result, err = mutate_comment(session, 'delete', draft.id, nil, nil, true)
         if not result then
           return nil, err
         end
@@ -693,9 +823,9 @@ local function open_editor(session, target, id, body)
       end
       return true, nil
     elseif draft.id ~= nil then
-      result, err = session:edit_comment(draft.id, text)
+      result, err = mutate_comment(session, 'edit', draft.id, text, nil, true)
     else
-      result, err = session:add_comment(draft.target, text)
+      result, err = mutate_comment(session, 'add', nil, text, draft.target, true)
     end
     if not result then
       return nil, err

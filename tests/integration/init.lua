@@ -19,6 +19,8 @@ return {
   'integration.review_refresh_tests',
   'integration.review_tests',
   'integration.ui.quickfix_tests',
+  'integration.ui.comment_quickfix_tests',
+  'integration.ui.comment_decorations_tests',
   'integration.ui.statusline_tests',
   'integration.ui.side_by_side.added_tests',
   'integration.ui.side_by_side.untracked_tests',

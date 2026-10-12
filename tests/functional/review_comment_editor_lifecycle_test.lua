@@ -263,6 +263,9 @@ M.review_comment_should_detach_draft_and_reject_old_owner_when_tab_is_force_clos
     vim.cmd('tabclose!')
     assert(not vim.api.nvim_tabpage_is_valid(tab) and vim.api.nvim_buf_is_valid(buffer) and vim.bo[buffer].buflisted)
     assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 0)
+    -- Noncanonical JSON makes a redundant restart rewrite observable.
+    raw = ' ' .. raw
+    assert(vim.fn.writefile({ raw }, path) == 0)
     vim.cmd('ReviewStart HEAD')
     assert(vim.wait(2000, function()
       return vim.fn.getqflist({ id = 0 }).id ~= list

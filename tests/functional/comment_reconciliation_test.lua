@@ -125,6 +125,8 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
+    assert(vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments')
+    vim.cmd('ReviewFiles')
     assert(functional_review.wait_for_list(1) == list)
     assert(vim.api.nvim_tabpage_is_valid(review_tab) and vim.api.nvim_win_is_valid(main_window))
     vim.cmd('ReviewStop')
@@ -137,14 +139,14 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     assert(
       vim.wait(2000, function()
         local restarted = vim.fn.getqflist({ id = 0, title = 1, items = 1 })
-        return restarted.id ~= list and restarted.title == 'Diff Review' and #restarted.items == 0
+        return restarted.id ~= list and restarted.title == 'Diff Review Comments' and #restarted.items == #expected
       end),
       'expected a new active review list for the empty comparison'
     )
-    list = functional_review.wait_for_list(0)
+    list = vim.fn.getqflist({ id = 0 }).id
     wait_for_comments(loaded, expected)
     review_tab = vim.api.nvim_get_current_tabpage()
-    assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 0)
+    assert(#vim.fn.getqflist({ id = list, items = 1 }).items == #expected)
 
     repo:write_file('file.txt', refreshed)
     for _, record in ipairs(expected) do
@@ -152,6 +154,8 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
+    assert(vim.fn.getqflist({ id = 0 }).id == list)
+    vim.cmd('ReviewFiles')
     functional_review.wait_for_list(1)
     assert(vim.api.nvim_get_current_tabpage() == review_tab)
     local path = storage.path(loaded.storage_path, loaded.identity)

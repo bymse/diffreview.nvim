@@ -5,11 +5,14 @@ local M = {}
 local quickfix_title = 'Diff Review'
 local selection_bindings = {}
 local presented_ids = {}
+local comment_rows = {}
+local comment_ticks = {}
+local comment_bindings = {}
 
 ---@param instance_id integer
 ---@return string
-local function quickfix_context(instance_id)
-  return 'diffreview:files:' .. instance_id
+local function quickfix_context(instance_id, kind)
+  return 'diffreview:' .. (kind or 'files') .. ':' .. instance_id
 end
 
 ---@param id quickfix_id|nil
@@ -27,6 +30,7 @@ local function get_quickfix_list(id)
     quickfixtextfunc = 1,
     nr = 0,
     qfbufnr = 1,
+    changedtick = 1,
   })
   return list.id == id and list or nil
 end
@@ -49,16 +53,16 @@ end
 ---@param id quickfix_id|nil
 ---@param instance_id integer
 ---@return boolean
-local function is_owned(id, instance_id)
+local function is_owned(id, instance_id, kind)
   local list = get_quickfix_list(id)
-  return list ~= nil and list.context == quickfix_context(instance_id)
+  return list ~= nil and list.context == quickfix_context(instance_id, kind)
 end
 
 ---@param id quickfix_id|nil
 ---@param instance_id integer
 ---@return table|nil
-local function get_active_owned_list(id, instance_id)
-  if not is_owned(id, instance_id) then
+local function get_active_owned_list(id, instance_id, kind)
+  if not is_owned(id, instance_id, kind) then
     return nil
   end
   local current = vim.fn.getqflist({ id = 0 })
@@ -82,6 +86,29 @@ local function close_quickfix_windows(buffer)
   for _, window in ipairs(vim.api.nvim_list_wins()) do
     if displays_quickfix_buffer(window, buffer) then
       vim.api.nvim_win_close(window, false)
+    end
+  end
+end
+
+---@return table<integer, integer[]>
+local function drawer_cursors()
+  local cursors = {}
+  for _, window in ipairs(vim.api.nvim_list_wins()) do
+    local info = vim.fn.getwininfo(window)[1]
+    if info.quickfix == 1 and info.loclist == 0 then
+      cursors[window] = vim.api.nvim_win_get_cursor(window)
+    end
+  end
+  return cursors
+end
+
+---@param cursors table<integer, integer[]>
+---@return nil
+local function restore_cursors(cursors)
+  for window, cursor in pairs(cursors) do
+    if vim.api.nvim_win_is_valid(window) then
+      cursor[1] = math.min(cursor[1], vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(window)))
+      vim.api.nvim_win_set_cursor(window, cursor)
     end
   end
 end
@@ -171,9 +198,10 @@ end
 ---@param id quickfix_id|nil
 ---@param instance_id integer
 ---@param tab integer
+---@param kind 'files'|'comments'|nil
 ---@return boolean
-function M.drawer_open(id, instance_id, tab)
-  local list = get_active_owned_list(id, instance_id)
+function M.drawer_open(id, instance_id, tab, kind)
+  local list = get_active_owned_list(id, instance_id, kind)
   if list == nil then
     return false
   end
@@ -301,17 +329,20 @@ function M.update_review_files(id, instance_id, files)
   if not is_owned(id, instance_id) then
     return
   end
+  local cursors = drawer_cursors()
   if vim.fn.setqflist({}, 'u', { id = id, items = create_quickfix_entries(files) }) ~= 0 then
     error('failed to update the Diff Review quickfix list')
   end
   presented_ids[instance_id] = M.ordered_ids(files)
+  restore_cursors(cursors)
 end
 
 ---@param id quickfix_id|nil
 ---@param instance_id integer
+---@param kind 'files'|'comments'|nil
 ---@return nil
-function M.close_drawer(id, instance_id)
-  local list = get_active_owned_list(id, instance_id)
+function M.close_drawer(id, instance_id, kind)
+  local list = get_active_owned_list(id, instance_id, kind)
   if list ~= nil then
     close_quickfix_windows(list.qfbufnr)
   end
@@ -333,6 +364,142 @@ function M.cleanup(id, instance_id)
     close_quickfix_windows(list.qfbufnr)
   end
   pcall(vim.fn.setqflist, {}, 'r', { id = id, items = {} })
+end
+
+---@param records ReviewComment[]
+---@return vim.quickfix.entry[]
+local function comment_entries(records)
+  local entries = {}
+  for _, record in ipairs(records) do
+    local location = record.side and ('%s:%d-%d'):format(record.side, record.start_line, record.end_line) or 'file'
+    entries[#entries + 1] = {
+      valid = 1,
+      text = ('[%s] [%s] %s %s — %s'):format(
+        record.stale and 'stale' or 'attached',
+        record.resolved and 'resolved' or 'open',
+        record.display_path,
+        location,
+        record.body:gsub('\n', ' ')
+      ),
+      user_data = { comment_id = record.id },
+    }
+  end
+  return entries
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param tab integer
+---@param row integer
+---@return string|nil
+function M.comment_row_id(id, instance_id, tab, row)
+  local list = get_active_owned_list(id, instance_id, 'comments')
+  local expected = comment_rows[instance_id]
+  if
+    not list
+    or not expected
+    or vim.api.nvim_get_current_tabpage() ~= tab
+    or not displays_quickfix_buffer(vim.api.nvim_get_current_win(), list.qfbufnr)
+    or row < 1
+    or row > #expected
+    or #list.items ~= #expected
+    or list.changedtick ~= comment_ticks[instance_id]
+  then
+    return nil
+  end
+  for index, item in ipairs(list.items) do
+    if not vim.deep_equal(item, expected[index]) then
+      return nil
+    end
+  end
+  return list.items[row].user_data.comment_id
+end
+
+---@param instance_id integer
+---@return nil
+local function remove_comment_bindings(instance_id)
+  local binding = comment_bindings[instance_id]
+  if binding and vim.api.nvim_buf_is_valid(binding.buffer) then
+    for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(binding.buffer, 'n')) do
+      if binding.callbacks[mapping.lhs] == mapping.callback then
+        vim.api.nvim_buf_del_keymap(binding.buffer, 'n', mapping.lhs)
+      end
+    end
+  end
+  comment_bindings[instance_id] = nil
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param records ReviewComment[]
+---@return quickfix_id
+function M.update_review_comments(id, instance_id, records)
+  local cursors = drawer_cursors()
+  local previous = vim.fn.getqflist({ id = 0 }).id
+  if not is_owned(id, instance_id, 'comments') then
+    id = nil
+  end
+  local properties = {
+    title = 'Diff Review Comments',
+    context = quickfix_context(instance_id, 'comments'),
+    items = comment_entries(records),
+    quickfixtextfunc = format_quickfix_entries,
+  }
+  if id then
+    properties.id = id
+  else
+    properties.nr = '$'
+  end
+  assert(vim.fn.setqflist({}, id and 'u' or ' ', properties) == 0, 'failed to update comments')
+  id = id or vim.fn.getqflist({ id = 0 }).id
+  local list = assert(get_quickfix_list(id))
+  comment_rows[instance_id] = vim.deepcopy(list.items)
+  comment_ticks[instance_id] = list.changedtick
+  if previous ~= 0 and get_quickfix_list(previous) then
+    select_quickfix_list(previous)
+  end
+  restore_cursors(cursors)
+  return id
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@param tab integer
+---@param records ReviewComment[]
+---@param action fun(key: string, id: string): nil
+---@return quickfix_id
+function M.show_review_comments(id, instance_id, tab, records, action)
+  id = M.update_review_comments(id, instance_id, records)
+  select_quickfix_list(id)
+  vim.cmd('botright copen')
+  local buffer = assert(get_quickfix_list(id)).qfbufnr
+  remove_comment_bindings(instance_id)
+  local callbacks = {}
+  for _, key in ipairs({ '<CR>', 'e', 'd', 'r', 'a' }) do
+    local callback = function()
+      local selected = M.comment_row_id(id, instance_id, tab, vim.api.nvim_win_get_cursor(0)[1])
+      if selected then
+        action(key, selected)
+      end
+    end
+    callbacks[key] = callback
+    vim.keymap.set('n', key, callback, { buffer = buffer, silent = true })
+  end
+  comment_bindings[instance_id] = { buffer = buffer, callbacks = callbacks }
+  return id
+end
+
+---@param id quickfix_id|nil
+---@param instance_id integer
+---@return nil
+function M.cleanup_comments(id, instance_id)
+  remove_comment_bindings(instance_id)
+  comment_rows[instance_id] = nil
+  comment_ticks[instance_id] = nil
+  if is_owned(id, instance_id, 'comments') then
+    M.close_drawer(id, instance_id, 'comments')
+    vim.fn.setqflist({}, 'r', { id = id, items = {} })
+  end
 end
 
 return M

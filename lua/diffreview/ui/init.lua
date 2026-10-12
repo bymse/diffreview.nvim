@@ -2,6 +2,7 @@ local quickfix = require('diffreview.ui.quickfix')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
+local comment_decorations = require('diffreview.ui.comment_decorations')
 local M = {}
 
 ---@class ReviewSideBySideState
@@ -18,16 +19,19 @@ local M = {}
 ---@field companion_buffer integer|nil
 ---@field main_side 'old'|'current'|nil
 ---@field presented_id string|nil
+---@field comments CommentDecorations
 
 ---@class ReviewUiHandlers
 ---@field on_file_selected fun(file_id: string): nil
 ---@field on_tab_closed fun(): nil
+---@field on_comment_action? fun(key: string, id: string): nil
 
 ---@class ReviewUi
 ---@field instance_id integer
 ---@field tabpage integer|nil
 ---@field side_by_side ReviewSideBySideState
 ---@field quickfix_id quickfix_id|nil
+---@field comment_quickfix_id quickfix_id|nil
 ---@field handlers ReviewUiHandlers|nil
 ---@field tab_closed_autocmd integer|nil
 ---@field tab_acquired boolean
@@ -168,6 +172,58 @@ function ReviewUi:files_open()
   return self.tabpage ~= nil and quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage)
 end
 
+---@return boolean
+function ReviewUi:comments_open()
+  return self.tabpage ~= nil
+    and quickfix.drawer_open(self.comment_quickfix_id, self.instance_id, self.tabpage, 'comments')
+end
+
+---@param records ReviewComment[]
+---@return nil
+function ReviewUi:update_review_comments(records)
+  self.comment_quickfix_id = quickfix.update_review_comments(self.comment_quickfix_id, self.instance_id, records)
+  side_by_side.update_comments(self, records)
+end
+
+---@param records ReviewComment[]
+---@return nil
+function ReviewUi:show_review_comments(records)
+  local tab = acquire_tab(self)
+  present_in_review_tab(tab, function()
+    self.comment_quickfix_id = quickfix.show_review_comments(
+      self.comment_quickfix_id,
+      self.instance_id,
+      tab,
+      records,
+      function(key, id)
+        if self.handlers and self.handlers.on_comment_action then
+          self.handlers.on_comment_action(key, id)
+        end
+      end
+    )
+  end)
+end
+
+---@param records ReviewComment[]
+---@return boolean
+function ReviewUi:toggle_review_comments(records)
+  if not in_review_tab(self) then
+    return false
+  end
+  if self:comments_open() then
+    quickfix.close_drawer(self.comment_quickfix_id, self.instance_id, 'comments')
+  else
+    self:show_review_comments(records)
+  end
+  return true
+end
+
+---@param record ReviewComment
+---@return boolean
+function ReviewUi:focus_comment(record)
+  return side_by_side.focus_comment(self, record)
+end
+
 ---@return nil
 function ReviewUi:clear_selected_diff()
   local tab = assert(self.tabpage)
@@ -198,6 +254,7 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
   present_in_review_tab(tab, function()
     if not keep_drawer then
       quickfix.close_drawer(self.quickfix_id, self.instance_id)
+      quickfix.close_drawer(self.comment_quickfix_id, self.instance_id, 'comments')
     end
     side_by_side.display_side_by_side(self, diff, layout)
     self.side_by_side.presented_id = diff.operation ~= 'error' and file_id or nil
@@ -217,6 +274,7 @@ function ReviewUi:cleanup()
   end
   local ok, err = pcall(side_by_side.cleanup, self)
   quickfix.cleanup(self.quickfix_id, self.instance_id)
+  quickfix.cleanup_comments(self.comment_quickfix_id, self.instance_id)
   self.quickfix_id = nil
   local tab = self.tabpage
   self.tabpage = nil
@@ -253,6 +311,7 @@ function M.get_ui(handlers)
     quickfix_id = nil,
     handlers = handlers,
     side_by_side = {
+      comments = comment_decorations.new_state(next_instance_id),
       namespace = vim.api.nvim_create_namespace('diffreview.side_by_side.' .. next_instance_id),
       main_window = nil,
       companion_window = nil,

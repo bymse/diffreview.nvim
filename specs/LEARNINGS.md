@@ -31,3 +31,13 @@ Impact: comment-list editing should reuse `edit_comment_by_id(id)` and creation 
 Use in future specs: functional tests use configured commands, native selection, buffers and checkpoints; narrowly scoped by-ID tests cover the public entry point lacking a command. Wait for checkpoint adoption, not merely an unmodified buffer, for async saves. Plain `text` filetype avoids isolated-runtime Markdown parser requirements. Summarize verification and link captured output instead of copying transient progress counters.
 
 Source: `.agent-runs/003-comment-editor/learnings-draft.md`, verified spec 003.
+
+## 2026-10-12 — Native quickfix projections and overlapping attachment
+
+Finding: quickfix updates may reset drawer cursors; preserve actual window cursors. `getqflist` positive idx filters items, so complete-row validation omits it and uses changedtick plus detached item snapshots. Pending attachment requires token identity rather than ID equality because cancellation and same-ID reselection can overlap asynchronous text loading.
+
+Impact: session mutations centrally update both lists and annotations after saving. Mapping dispatch checks list/tab/window/presentation on every action; cleanup removes only owned callbacks. Comment namespaces track all prior buffers separately from diff decoration.
+
+Use in future specs: preserve the real async cancellation/same-ID regression, which fails under an ID-only guard. Skip unchanged startup checkpoint writes using structured equality; JSON ordering is not stable, and noncanonical valid JSON makes redundant-write regression deterministic. Functional configured-command names must sort after setup registration coverage. Wait for checkpoint adoption as well as clean editor state.
+
+Source: `.agent-runs/004-comment-presentation/learnings-draft.md`, verified spec 004 and overlapping-operation mutation probe.

@@ -45,3 +45,21 @@ Judge result: PASS after functional-interface coverage repair and report-only co
 Important decisions: one editor, write remains open and pins ID, dirty/pending guards, pinned location/owner, actual visible-text matching, detached listed draft preservation on tab closure. Product-command lifecycle tests replace internal-state assertions.
 
 Follow-up risks: detached drafts are retained editor buffers rather than crash-recovery storage. A clean creation draft surviving refresh rejects obsolete-comparison writes and must be reopened.
+
+## 004-comment-presentation — 2026-10-12
+
+Status: PASS
+
+Changed files: command/session/UI boundaries, `lua/diffreview/ui/quickfix.lua`, `lua/diffreview/ui/side_by_side.lua`, new `lua/diffreview/ui/comment_decorations.lua`; focused quickfix/decorations integration suites, management/attachment/overlap/safety/lifecycle functional suites, functional comments helper, registrations and affected fixtures; Codebase Map, spec contract and evidence included. Full inventory: `.agent-runs/004-comment-presentation/evidence.md`.
+
+Verification: independent lint, format, format-check, full tests and diff-check passed; 50 unit, 200 integration, 87 functional (337). Evidence: `.agent-runs/004-comment-presentation/independent-verification.md`.
+
+Judge result: PASS; compliance, architecture, simplicity 5/5; tests, regression risk, maintainability 4/5. Async same-ID pending-source replacement has a mutation-proven regression. Independent verification also found redundant unchanged-checkpoint startup rewriting, now avoided with structured equality and deterministic regression coverage.
+
+Important decisions: separate owned lists sharing one drawer; `<CR>/e/d/r/a` actions; range-aware attachment and bang cancellation; save-before-projection, stale file-level annotations and isolated namespace cleanup; clean pinned-editor invalidation only after successful mutation.
+
+Follow-up risks: native quickfix history remains global but actions validate ownership and presentation. Verification used isolated headless Neovim/Git fixtures; no separate interactive TUI smoke test was required or performed. No outstanding failures or blockers.
+
+## Completion — 2026-10-12
+
+All four specs completed in filename order with fresh implementers, gap-review approval, independent canonical gates, and passing quality-judge review. Each phase has evidence and promoted durable learnings. Final implementation provides local durable comments, exact reconciliation, write-to-save editing, independent comment browsing/management and annotations. No verification gates remain blocked or skipped.

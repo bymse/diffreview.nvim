@@ -47,7 +47,15 @@ M.plugin_should_register_commands_when_setup_is_called = function()
   functional_review.ensure_setup()
   assert(vim.fn.exists(':ReviewStart') == 2, 'expected ReviewStart command')
   assert(vim.fn.exists(':ReviewStop') == 2, 'expected ReviewStop command')
-  for _, name in ipairs({ 'ReviewFiles', 'ReviewRefresh', 'ReviewMarkViewed', 'ReviewMarkUnviewed', 'ReviewComment' }) do
+  for _, name in ipairs({
+    'ReviewFiles',
+    'ReviewRefresh',
+    'ReviewMarkViewed',
+    'ReviewMarkUnviewed',
+    'ReviewComment',
+    'ReviewComments',
+    'ReviewCommentAttach',
+  }) do
     assert(vim.fn.exists(':' .. name) == 2, 'expected ' .. name .. ' command')
   end
   assert(not pcall(diffreview.setup, {}), 'expected setup to remain single-use')
