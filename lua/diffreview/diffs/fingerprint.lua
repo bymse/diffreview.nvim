@@ -27,7 +27,9 @@ function M.compute(repo, comparison, entry, operation, snapshot)
   else
     fields = { 'untracked', '', assert(entry.untracked_path), '000000', '000000', '' }
   end
-  if diff and ((diff.status == 'D' and not unmerged) or not comparison.target_is_worktree) then
+  if
+    diff and ((diff.status == 'D' and not unmerged) or not comparison.target_is_worktree or diff.new_mode == '160000')
+  then
     fields[#fields + 1] = diff.new_oid
   else
     local bytes, err, mode

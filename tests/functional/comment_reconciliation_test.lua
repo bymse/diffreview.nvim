@@ -1,0 +1,166 @@
+local functional_review = require('helpers.functional_review')
+local diffs = require('diffreview.diffs')
+local review_progress = require('diffreview.review_progress')
+local storage = require('diffreview.storage')
+
+local M = {}
+local base = { 'before', 'anchor', 'range', 'after', 'base' }
+local current = { 'before', 'anchor', 'range', 'after', 'changed' }
+
+local function wait_for_comments(loaded, expected)
+  assert(
+    vim.wait(2000, function()
+      local saved = storage.load(loaded.storage_path, loaded.identity)
+      return saved ~= nil and vim.deep_equal(saved.comments, expected)
+    end),
+    'expected reconciled comments in the saved checkpoint'
+  )
+end
+
+M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and_return = function()
+  functional_review.with_review(function(repo)
+    repo:write_file('file.txt', base)
+    repo:add('file.txt')
+    repo:commit('base')
+    repo:write_file('file.txt', current)
+    return { from = 'HEAD' }
+  end, function(repo)
+    local result, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
+    assert(result.ok and loaded)
+    local progress = review_progress.reconcile(nil, loaded)
+    for _, side in ipairs({ 'old', 'current' }) do
+      progress.comments[#progress.comments + 1] = {
+        id = side .. '-saved-note',
+        file_id = 'stored:file.txt',
+        display_path = 'file.txt',
+        body = side .. ' saved body',
+        resolved = side == 'current',
+        stale = false,
+        side = side,
+        start_line = 2,
+        end_line = 3,
+        anchor_lines = { 'anchor', 'range' },
+        context_before = 'before',
+        context_after = 'after',
+      }
+    end
+    progress.comments[#progress.comments + 1] = {
+      id = 'saved-file-note',
+      file_id = 'stored:file.txt',
+      display_path = 'file.txt',
+      body = 'saved file body',
+      resolved = true,
+      stale = false,
+    }
+    assert(storage.save(loaded.storage_path, progress))
+    local expected = vim.deepcopy(progress.comments)
+    local moved_base = { 'prefix', 'before', 'anchor', 'range', 'after', 'base' }
+    local moved_current = { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' }
+    repo:write_file('file.txt', moved_base)
+    repo:add('file.txt')
+    repo:commit('move baseline')
+    repo:write_file('file.txt', moved_current)
+    for index = 1, 2 do
+      expected[index].start_line, expected[index].end_line = 3, 4
+    end
+    vim.cmd('ReviewStart HEAD')
+    local list = functional_review.wait_for_list(1)
+    wait_for_comments(loaded, expected)
+    local review_tab = vim.api.nvim_get_current_tabpage()
+    functional_review.select_path(list, 'file.txt')
+    functional_review.wait_for_two_sided_current(repo, 'file.txt', moved_base, moved_current)
+    local main_window = vim.api.nvim_get_current_win()
+
+    local refreshed = { 'extra', 'prefix', 'before', 'anchor', 'range', 'after', 'changed' }
+    repo:write_file('file.txt', refreshed)
+    expected[2].start_line, expected[2].end_line = 4, 5
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+    assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 1)
+    assert(
+      vim.wait(2000, function()
+        return vim.bo[vim.api.nvim_win_get_buf(main_window)].buftype == 'nofile'
+          and vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(main_window), 0, -1, false), refreshed)
+      end),
+      'expected immutable current snapshot after refresh'
+    )
+    assert(#vim.api.nvim_tabpage_list_wins(review_tab) == 2)
+    local snapshots = {}
+    for _, window in ipairs(vim.api.nvim_tabpage_list_wins(review_tab)) do
+      snapshots[#snapshots + 1] = vim.api.nvim_win_get_buf(window)
+    end
+
+    repo:write_file('file.txt', { 'extra', 'prefix', 'before', 'edited', 'range', 'after', 'changed' })
+    expected[2].stale = true
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+    repo:write_file('file.txt', refreshed)
+    expected[2].stale = false
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+
+    for _, window in ipairs(vim.api.nvim_tabpage_list_wins(review_tab)) do
+      assert(vim.fn.getwininfo(window)[1].quickfix == 0, 'expected closed drawer before empty refresh')
+    end
+    repo:write_file('file.txt', moved_base)
+    for _, record in ipairs(expected) do
+      record.stale = true
+    end
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+    assert(vim.wait(2000, function()
+      return #vim.fn.getqflist({ id = list, items = 1 }).items == 0
+    end))
+    assert(vim.api.nvim_tabpage_is_valid(review_tab))
+    assert(vim.api.nvim_win_is_valid(main_window))
+    assert(vim.api.nvim_win_get_tabpage(main_window) == review_tab)
+    assert(not vim.wo[main_window].diff)
+    assert(vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(main_window), 0, -1, false), { '' }))
+    for _, buffer in ipairs(snapshots) do
+      assert(not vim.api.nvim_buf_is_valid(buffer), 'expected obsolete snapshots to be deleted')
+    end
+    repo:write_file('file.txt', refreshed)
+    for _, record in ipairs(expected) do
+      record.stale = false
+    end
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+    assert(functional_review.wait_for_list(1) == list)
+    assert(vim.api.nvim_tabpage_is_valid(review_tab) and vim.api.nvim_win_is_valid(main_window))
+    vim.cmd('ReviewStop')
+    assert(not vim.api.nvim_tabpage_is_valid(review_tab))
+    repo:write_file('file.txt', moved_base)
+    for _, record in ipairs(expected) do
+      record.stale = true
+    end
+    vim.cmd('ReviewStart HEAD')
+    assert(
+      vim.wait(2000, function()
+        local restarted = vim.fn.getqflist({ id = 0, title = 1, items = 1 })
+        return restarted.id ~= list and restarted.title == 'Diff Review' and #restarted.items == 0
+      end),
+      'expected a new active review list for the empty comparison'
+    )
+    list = functional_review.wait_for_list(0)
+    wait_for_comments(loaded, expected)
+    review_tab = vim.api.nvim_get_current_tabpage()
+    assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 0)
+
+    repo:write_file('file.txt', refreshed)
+    for _, record in ipairs(expected) do
+      record.stale = false
+    end
+    vim.cmd('ReviewRefresh')
+    wait_for_comments(loaded, expected)
+    functional_review.wait_for_list(1)
+    assert(vim.api.nvim_get_current_tabpage() == review_tab)
+    local path = storage.path(loaded.storage_path, loaded.identity)
+    local raw = vim.fn.readfile(path)[1]
+    vim.cmd('ReviewStop')
+    assert(not vim.api.nvim_tabpage_is_valid(review_tab))
+    assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 0)
+    assert(vim.fn.readfile(path)[1] == raw)
+  end, false)
+end
+
+return M

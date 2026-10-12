@@ -166,4 +166,54 @@ function M.apply(records, action, id, body, location, display_path, lines)
   return candidate, action == 'delete' and true or vim.deepcopy(record), nil
 end
 
+---@param records ReviewComment[]
+---@param loaded LoadedDiffs
+---@param views table<string, DiffViewModel>
+---@return ReviewComment[]
+function M.reconcile(records, loaded, views)
+  local candidate = vim.deepcopy(records)
+  for _, record in ipairs(candidate) do
+    local entry = loaded.entries_by_id[record.file_id]
+    record.stale = true
+    if entry ~= nil and record.side == nil then
+      record.display_path = entry.summary.display_path
+      record.stale = false
+    elseif entry ~= nil then
+      local view = views[record.file_id]
+      local version = view and view[record.side]
+      if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
+        local lines = version.content.lines
+        local anchors = assert(record.anchor_lines)
+        local match
+        for first = 1, #lines - #anchors + 1 do
+          local last = first + #anchors - 1
+          local exact = (record.context_before == nil or lines[first - 1] == record.context_before)
+            and (record.context_after == nil or lines[last + 1] == record.context_after)
+          for offset, line in ipairs(anchors) do
+            if lines[first + offset - 1] ~= line then
+              exact = false
+              break
+            end
+          end
+          if exact then
+            if match ~= nil then
+              match = nil
+              break
+            end
+            match = first
+          end
+        end
+        if match ~= nil then
+          record.start_line, record.end_line = match, match + #anchors - 1
+          record.context_before = lines[record.start_line - 1]
+          record.context_after = lines[record.end_line + 1]
+          record.display_path = entry.summary.display_path
+          record.stale = false
+        end
+      end
+    end
+  end
+  return candidate
+end
+
 return M

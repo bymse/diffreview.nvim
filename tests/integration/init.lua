@@ -14,6 +14,7 @@ return {
   'integration.diffs.fingerprint_tests',
   'integration.storage_tests',
   'integration.comment_state_tests',
+  'integration.comment_reconciliation_tests',
   'integration.review_progress_tests',
   'integration.review_refresh_tests',
   'integration.review_tests',

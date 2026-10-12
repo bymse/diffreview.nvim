@@ -220,7 +220,7 @@ end
 ---@param entry LoadedDiffEntry
 ---@param operation AsyncOperation|nil
 ---@param snapshot_worktree boolean|nil
----@return DiffViewModel|nil, WorktreeFingerprintInput|nil
+---@return DiffViewModel|nil, WorktreeFingerprintInput|nil, boolean|nil nontext True only for a metadata-identified submodule after supported-side reads succeed.
 function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
   if async_operation.is_canceled(operation) then
     return nil
@@ -228,6 +228,32 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
   local operation_name = get_operation(entry)
   local display_path = entry.summary.display_path
   local diff = entry.git_diff
+  if snapshot_worktree and diff and (diff.old_mode == '160000' or diff.new_mode == '160000') then
+    -- Unsupported sides must not hide read failures on the supported side.
+    if operation_name ~= 'added' and operation_name ~= 'unmerged' and diff.old_mode ~= '160000' then
+      local old, _, read_error =
+        load_blob(repo, entry, diff.old_path or diff.current_path, diff.old_mode, diff.old_oid, operation)
+      if old == nil then
+        return read_error and error_view(operation_name, display_path, read_error) or nil
+      end
+    end
+    local snapshot
+    if operation_name ~= 'deleted' and diff.new_mode ~= '160000' then
+      local current, bytes, read_error, mode
+      if target_is_worktree then
+        current, bytes, read_error, mode = load_worktree(entry, diff.current_path, diff.new_mode, operation, true)
+      else
+        current, bytes, read_error = load_blob(repo, entry, diff.current_path, diff.new_mode, diff.new_oid, operation)
+      end
+      if current == nil then
+        return read_error and error_view(operation_name, display_path, read_error) or nil
+      end
+      snapshot = mode and { bytes = assert(bytes), mode = mode } or nil
+    end
+    return error_view(operation_name, display_path, 'Submodule content is outside the supported review scope'),
+      snapshot,
+      true
+  end
   if diff == nil then
     local current, bytes, read_error, mode =
       load_worktree(entry, assert(entry.untracked_path), nil, operation, snapshot_worktree)

@@ -142,6 +142,53 @@ local function stop_review(session, tab_closed)
   end
 end
 
+---@param loaded LoadedDiffs
+---@param id string
+---@param operation AsyncOperation
+---@param current fun(): boolean
+---@return DiffViewModel|nil
+local function load_matching_view(loaded, id, operation, current)
+  local diff, snapshot, nontext = diffs.load_selected_view(loaded, id, operation, true)
+  if not current() then
+    return nil
+  end
+  local metadata = loaded.entries_by_id[id].git_diff
+  local submodule = metadata and (metadata.old_mode == '160000' or metadata.new_mode == '160000')
+  if diff == nil or (diff.operation == 'error' and not (submodule and nontext)) then
+    error('Unable to load comparison content')
+  end
+  local matches = diffs.selected_fingerprint_matches(loaded, id, operation, snapshot)
+  if not current() then
+    return nil
+  end
+  if not matches then
+    error('Comparison content changed')
+  end
+  return diff
+end
+
+---@param loaded LoadedDiffs
+---@param records ReviewComment[]
+---@param operation AsyncOperation
+---@param current fun(): boolean
+---@return table<string, DiffViewModel>|nil
+local function load_comment_views(loaded, records, operation, current)
+  local views, seen = {}, {}
+  for _, record in ipairs(records) do
+    local id = record.file_id
+    local entry = loaded.entries_by_id[id]
+    if record.side ~= nil and entry ~= nil and not seen[id] then
+      seen[id] = true
+      local diff = load_matching_view(loaded, id, operation, current)
+      if diff == nil then
+        return nil
+      end
+      views[id] = diff
+    end
+  end
+  return views
+end
+
 ---@param options ReviewStartOptions
 ---@return nil
 function ReviewSession:start(options)
@@ -177,7 +224,13 @@ function ReviewSession:start(options)
         fail_start(self, operation, review_ui, load_error)
         return
       end
-      local progress = review_progress.reconcile(previous, loaded)
+      local views = load_comment_views(loaded, previous and previous.comments or {}, operation, function()
+        return is_start_operation_current(self, operation)
+      end)
+      if views == nil or not is_start_operation_current(self, operation) then
+        return
+      end
+      local progress = review_progress.reconcile(previous, loaded, views)
       if (#loaded.files > 0 or previous ~= nil) and is_start_operation_current(self, operation) then
         local saved, save_error = storage.save(loaded.storage_path, progress)
         if not saved then
@@ -185,7 +238,7 @@ function ReviewSession:start(options)
           return
         end
       end
-      if #loaded.files == 0 then
+      if #loaded.files == 0 and #progress.comments == 0 then
         self.state = { kind = 'idle' }
         vim.notify('No changes to review', vim.log.levels.INFO)
         return
@@ -278,21 +331,17 @@ function ReviewSession:refresh(preloaded)
       then
         error('Review identity changed; start a new review')
       end
-      local candidate = review_progress.reconcile(active.progress, loaded)
+      local views = load_comment_views(loaded, active.progress.comments, request, current)
+      if views == nil or not current() then
+        return
+      end
+      local candidate = review_progress.reconcile(active.progress, loaded, views)
       local selected = active.selected_id
       local diff
       if selected ~= nil and loaded.entries_by_id[selected] ~= nil then
-        local snapshot
-        diff, snapshot = diffs.load_selected_view(loaded, selected, request, true)
+        diff = views[selected] or load_matching_view(loaded, selected, request, current)
         if not current() then
           return
-        end
-        if
-          diff == nil
-          or diff.operation == 'error'
-          or not diffs.selected_fingerprint_matches(loaded, selected, request, snapshot)
-        then
-          error('Unable to load matching selected review content')
         end
       end
       if not current() then
@@ -316,6 +365,7 @@ function ReviewSession:refresh(preloaded)
       else
         active.ui:update_review_files(loaded.files)
         if diff ~= nil then
+          active.selected_presented = diff.operation ~= 'error'
           active.ui:refresh_selected_diff(diff, self.config.layout)
         end
         if drawer_open and not active.ui:files_open() then
@@ -329,10 +379,6 @@ function ReviewSession:refresh(preloaded)
     if active.refresh_request == request then
       active.refresh_request = nil
     end
-  end
-  if preloaded ~= nil then
-    perform()
-    return true, nil
   end
   local running = coroutine.create(perform)
   local resumed, err = coroutine.resume(running)

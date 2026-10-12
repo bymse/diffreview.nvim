@@ -246,15 +246,20 @@ function M.clear(ui)
   end
   local main = state.main_window
   local companion = state.companion_window
+  local buffer
+  if has_owned_window(state, main, ui.instance_id) then
+    -- Keep the main window alive before deleting its displayed snapshot.
+    buffer = scratch_buffer.information(ui.instance_id, state.information_buffer, 'main-information', {})
+    state.information_buffer = nil
+    vim.api.nvim_win_set_buf(assert(main), buffer)
+  end
   M.cleanup(ui)
   if has_owned_window(state, companion, ui.instance_id) then
     vim.api.nvim_win_close(assert(companion), false)
   end
   if has_owned_window(state, main, ui.instance_id) then
-    local buffer = scratch_buffer.information(ui.instance_id, nil, 'main-information', {})
     state.information_buffer = buffer
     state.main_window = main
-    vim.api.nvim_win_set_buf(assert(main), buffer)
   end
 end
 

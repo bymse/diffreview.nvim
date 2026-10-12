@@ -1,0 +1,232 @@
+unit: executed 50, passed 50, failed 0
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:332: Review identity changed; start a new review
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:332: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:352: EISDIR: illegal operation on a directory: /home/bymse/Desktop/home-repos/diffreview/.artifacts/diff-review-tests.WPw0r6/tmp/nvim.bymse/O6Daus/115/.git/diffreview-nvim/329429a0fc4aef9feb71d40468952bd446ea16800c49b135cd3f22151d2a68e4.json.9748001146216.tmp -> /home/bymse/Desktop/home-repos/diffreview/.artifacts/diff-review-tests.WPw0r6/tmp/nvim.bymse/O6Daus/115/.git/diffreview-nvim/329429a0fc4aef9feb71d40468952bd446ea16800c49b135cd3f22151d2a68e4.json
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:352: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:352: EISDIR: illegal operation on a directory: /home/bymse/Desktop/home-repos/diffreview/.artifacts/diff-review-tests.WPw0r6/tmp/nvim.bymse/O6Daus/118/.git/diffreview-nvim/6879c5bf45368a4cbc34011028d1f6d8de83d46e7ffb6317487b5e881a2faf06.json.9748081717797.tmp -> /home/bymse/Desktop/home-repos/diffreview/.artifacts/diff-review-tests.WPw0r6/tmp/nvim.bymse/O6Daus/118/.git/diffreview-nvim/6879c5bf45368a4cbc34011028d1f6d8de83d46e7ffb6317487b5e881a2faf06.json
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:352: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:332: Review identity changed; start a new review
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:332: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: Unable to load comparison content
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: in function 'load_matching_view'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:182: in function 'load_comment_views'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:334: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:165: Comparison content changed
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:165: in function 'load_matching_view'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:342: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: Unable to load comparison content
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: in function 'load_matching_view'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:342: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: Unable to load comparison content
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:158: in function 'load_matching_view'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:182: in function 'load_comment_views'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:334: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:165: Comparison content changed
+stack traceback:
+	[C]: in function 'error'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:165: in function 'load_matching_view'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:182: in function 'load_comment_views'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:334: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315>
+	[C]: in function 'xpcall'
+	.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:315: in function <.../Desktop/home-repos/diffreview/lua/diffreview/review.lua:314>
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+No changes to review
+Review stopped
+Unable to inspect repository files
+Review stopped
+Review stopped
+No review is active
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Invalid review state schema
+Invalid review state schema
+Invalid review state schema
+Invalid review file record
+Review stopped
+EACCES: permission denied: /home/bymse/Desktop/home-repos/diffreview/.artifacts/diff-review-tests.WPw0r6/tmp/nvim.bymse/O6Daus/156/.git/diffreview-nvim/904952bdeead9e326908b21b4ec5c0e3d6276192c032d48bc78b25ccdb84c27a.json
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+A review is already starting or active
+Review stopped
+No review is active
+Review stopped
+Review start canceled
+Review stopped
+Review state is not a file
+Review stopped
+Review stopped
+Review stopped
+No changes to review
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review start canceled
+Review stopped
+No review is active
+Review stopped
+No review is active
+integration: executed 196, passed 196, failed 0
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+No review is active
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+No review is active
+Review stopped
+Invalid review start options
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+No review is active
+Review stopped
+No review is active
+Review stopped
+No review is active
+Review stopped
+No review is active
+Review stopped
+No review is active
+Review stopped
+No review is active
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+No review is active
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+Review stopped
+functional: executed 61, passed 61, failed 0

@@ -1,4 +1,5 @@
 local M = {}
+local comments = require('diffreview.comments')
 
 ---@class ReviewIdentity
 ---@field repository_root string
@@ -25,8 +26,9 @@ local M = {}
 
 ---@param previous ReviewProgress|nil
 ---@param loaded LoadedDiffs
+---@param views table<string, DiffViewModel>|nil
 ---@return ReviewProgress
-function M.reconcile(previous, loaded)
+function M.reconcile(previous, loaded, views)
   local records = {}
   local by_id = {}
   if previous then
@@ -55,7 +57,7 @@ function M.reconcile(previous, loaded)
     to_oid = loaded.comparison.to_oid,
     head_oid = loaded.comparison.head_oid,
     files = records,
-    comments = previous and vim.deepcopy(previous.comments) or {},
+    comments = comments.reconcile(previous and previous.comments or {}, loaded, views or {}),
   }
 end
 
