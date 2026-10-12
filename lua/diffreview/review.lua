@@ -4,6 +4,7 @@ local ui = require('diffreview.ui')
 local storage = require('diffreview.storage')
 local review_progress = require('diffreview.review_progress')
 local quickfix = require('diffreview.ui.quickfix')
+local comments = require('diffreview.comments')
 
 ---@class StartingReview
 ---@field kind 'starting'
@@ -444,6 +445,138 @@ function ReviewSession:mark_files(file_ids, viewed)
   end
   active.ui:update_review_files(active.loaded.files)
   return true, nil
+end
+
+---@param session ReviewSession
+---@param action CommentAction
+---@param id string|nil
+---@param body string|nil
+---@param location CommentLocation|nil
+---@return ReviewComment|boolean|nil, string|nil
+local function mutate_comment(session, action, id, body, location)
+  local active = session.state
+  if active.kind ~= 'active' then
+    return nil, 'No active review'
+  end
+  local loaded, progress, selected = active.loaded, active.progress, active.selected_id
+  local function current()
+    return session.state == active
+      and not async_operation.is_canceled(active.operation)
+      and active.selection_request == nil
+      and active.refresh_request == nil
+      and active.loaded == loaded
+      and active.progress == progress
+      and active.selected_id == selected
+      and (type(location) ~= 'table' or location.side == nil or active.selected_presented)
+  end
+  if not current() then
+    return nil, 'Review mutation unavailable'
+  end
+  local display_path, lines
+  if action == 'add' or action == 'reattach' then
+    if location == nil or not comments.valid_location(location) then
+      return nil, 'Invalid comment location'
+    end
+    -- Do not retain caller-owned location data across asynchronous content reads.
+    location = vim.deepcopy(location)
+    local entry = loaded.entries_by_id[location.file_id]
+    if entry == nil then
+      return nil, 'File is not in the current comparison'
+    end
+    display_path = entry.summary.display_path
+    if location.side ~= nil then
+      if selected ~= location.file_id or not active.selected_presented then
+        return nil, 'Text comments require the selected review file'
+      end
+      local diff, snapshot = diffs.load_selected_view(loaded, location.file_id, active.operation, true)
+      if not current() then
+        return nil, 'Review changed during comment loading'
+      end
+      if
+        diff == nil
+        or diff.operation == 'error'
+        or not diffs.selected_fingerprint_matches(loaded, location.file_id, active.operation, snapshot)
+      then
+        return nil, 'Comparison content changed; refresh the review'
+      end
+      if not current() then
+        return nil, 'Review changed during comment loading'
+      end
+      local version = diff[location.side]
+      if version == nil or version.content.kind ~= 'text' or version.content.source ~= 'snapshot' then
+        return nil, 'Comment side has no comparison text'
+      end
+      lines = version.content.lines
+    end
+  end
+  local records, result, err = comments.apply(progress.comments, action, id, body, location, display_path, lines)
+  if records == nil then
+    return nil, err
+  end
+  if not current() then
+    return nil, 'Review changed during comment loading'
+  end
+  local candidate = vim.deepcopy(progress)
+  candidate.comments = records
+  local saved, save_error = storage.save(loaded.storage_path, candidate)
+  if not saved then
+    return nil, save_error
+  end
+  active.progress = candidate
+  return result, nil
+end
+
+---@param location CommentLocation
+---@param body string
+---@return ReviewComment|nil, string|nil
+---Text locations must be called from a coroutine, like the comparison loader.
+function ReviewSession:add_comment(location, body)
+  local result, err = mutate_comment(self, 'add', nil, body, location)
+  ---@cast result ReviewComment|nil
+  return result, err
+end
+
+---@param id string
+---@param body string
+---@return ReviewComment|nil, string|nil
+function ReviewSession:edit_comment(id, body)
+  local result, err = mutate_comment(self, 'edit', id, body)
+  ---@cast result ReviewComment|nil
+  return result, err
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+function ReviewSession:delete_comment(id)
+  local result, err = mutate_comment(self, 'delete', id)
+  ---@cast result boolean|nil
+  return result, err
+end
+
+---@param id string
+---@return ReviewComment|nil, string|nil
+function ReviewSession:resolve_comment(id)
+  local result, err = mutate_comment(self, 'resolve', id)
+  ---@cast result ReviewComment|nil
+  return result, err
+end
+
+---@param id string
+---@return ReviewComment|nil, string|nil
+function ReviewSession:reopen_comment(id)
+  local result, err = mutate_comment(self, 'reopen', id)
+  ---@cast result ReviewComment|nil
+  return result, err
+end
+
+---@param id string
+---@param location CommentLocation
+---@return ReviewComment|nil, string|nil
+---Text locations must be called from a coroutine, like the comparison loader.
+function ReviewSession:reattach_comment(id, location)
+  local result, err = mutate_comment(self, 'reattach', id, nil, location)
+  ---@cast result ReviewComment|nil
+  return result, err
 end
 
 ---@return nil

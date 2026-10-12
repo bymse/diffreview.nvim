@@ -21,6 +21,7 @@ local M = {}
 ---@field to_oid string|nil
 ---@field head_oid string|nil
 ---@field files ReviewFileRecord[]
+---@field comments ReviewComment[]
 
 ---@param previous ReviewProgress|nil
 ---@param loaded LoadedDiffs
@@ -48,12 +49,13 @@ function M.reconcile(previous, loaded)
     summary.viewed = record.viewed_fingerprint == record.fingerprint
   end
   return {
-    version = 1,
+    version = 2,
     identity = loaded.identity,
     from_oid = loaded.comparison.from_oid,
     to_oid = loaded.comparison.to_oid,
     head_oid = loaded.comparison.head_oid,
     files = records,
+    comments = previous and vim.deepcopy(previous.comments) or {},
   }
 end
 

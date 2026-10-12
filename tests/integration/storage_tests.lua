@@ -27,7 +27,8 @@ M.load_should_reject_incompatible_identity_and_invalid_checkpoint_without_overwr
       target = 'worktree:current',
     }
     local state = {
-      version = 1,
+      version = 2,
+      comments = {},
       identity = identity,
       from_oid = string.rep('a', 40),
       files = {
@@ -45,7 +46,7 @@ M.load_should_reject_incompatible_identity_and_invalid_checkpoint_without_overwr
     local path = storage.path(directory, identity)
     local cases = {
       function(value)
-        value.version = 2
+        value.version = 1
       end,
       function(value)
         value.identity.source = 'branch:refs/heads/different'
@@ -100,6 +101,116 @@ M.load_should_reject_state_symlink_even_when_target_exists = function()
     assert(vim.uv.fs_lstat(path).type == 'link')
     assert(vim.uv.fs_readlink(path) == target)
     assert(vim.fn.readfile(target)[1] == '{}')
+  end)
+end
+
+M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = function()
+  git_repo.with_repo(function(repo)
+    local directory = repo.cwd .. '/.git/diffreview-nvim'
+    local identity =
+      { repository_root = repo.cwd, source = 'branch:main', baseline = 'head:HEAD', target = 'worktree:current' }
+    local state = {
+      version = 2,
+      identity = identity,
+      from_oid = string.rep('a', 40),
+      files = {},
+      comments = {
+        { id = 'one', file_id = 'stored:f', display_path = 'f', body = 'note', resolved = false, stale = false },
+        {
+          id = 'two',
+          file_id = 'stored:f',
+          display_path = 'f',
+          body = 'text',
+          resolved = true,
+          stale = true,
+          side = 'old',
+          start_line = 1,
+          end_line = 2,
+          anchor_lines = { 'a', 'b' },
+          context_after = 'c',
+        },
+      },
+    }
+    assert(storage.save(directory, state))
+    local path = storage.path(directory, identity)
+    local original = vim.fn.readfile(path)[1]
+    local cases = {
+      function(value)
+        value.comments = nil
+      end,
+      function(value)
+        value.comments = { bad = true }
+      end,
+      function(value)
+        value.comments[2].id = 'one'
+      end,
+      function(value)
+        value.comments[1].id = ''
+      end,
+      function(value)
+        value.comments[1].id = 1
+      end,
+      function(value)
+        value.comments[1].file_id = ''
+      end,
+      function(value)
+        value.comments[1].display_path = false
+      end,
+      function(value)
+        value.comments[1].body = ' \t\n'
+      end,
+      function(value)
+        value.comments[1].resolved = 1
+      end,
+      function(value)
+        value.comments[1].stale = nil
+      end,
+      function(value)
+        value.comments[1].context_before = 'bad'
+      end,
+      function(value)
+        value.comments[1].anchor_lines = {}
+      end,
+      function(value)
+        value.comments[1].start_line = 1
+      end,
+      function(value)
+        value.comments[2].side = 'bad'
+      end,
+      function(value)
+        value.comments[2].start_line = 0
+      end,
+      function(value)
+        value.comments[2].end_line = 1.5
+      end,
+      function(value)
+        value.comments[2].start_line = 3
+      end,
+      function(value)
+        value.comments[2].anchor_lines = { 'a' }
+      end,
+      function(value)
+        value.comments[2].anchor_lines = { 'a', false }
+      end,
+      function(value)
+        value.comments[2].context_after = {}
+      end,
+      function(value)
+        value.comments[2].context_before = false
+      end,
+    }
+    for _, corrupt in ipairs(cases) do
+      local value = vim.deepcopy(state)
+      corrupt(value)
+      local saved, save_error = storage.save(directory, value)
+      assert(not saved and save_error ~= nil and vim.fn.readfile(path)[1] == original)
+      local raw = vim.json.encode(value)
+      assert(vim.fn.writefile({ raw }, path) == 0)
+      local loaded, load_error = storage.load(directory, identity)
+      assert(loaded == nil and load_error ~= nil and vim.fn.readfile(path)[1] == raw)
+      assert(vim.fn.writefile({ original }, path) == 0)
+    end
+    assert(vim.deep_equal(assert(storage.load(directory, identity)).comments, state.comments))
   end)
 end
 

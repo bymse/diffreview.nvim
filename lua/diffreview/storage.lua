@@ -1,4 +1,6 @@
+local comments = require('diffreview.comments')
 local M = {}
+local validate
 
 ---@param value any
 ---@return boolean
@@ -55,8 +57,19 @@ function M.load(directory, identity)
   if not ok or type(value) ~= 'table' then
     return nil, 'Invalid review state JSON'
   end
-  if value.version ~= 1 then
-    return nil, 'Unsupported review state version'
+  local valid, validation_error = validate(value, identity)
+  if not valid then
+    return nil, validation_error
+  end
+  return value, nil
+end
+
+---@param value ReviewProgress
+---@param identity ReviewIdentity
+---@return boolean, string|nil
+validate = function(value, identity)
+  if type(value) ~= 'table' or value.version ~= 2 then
+    return false, 'Unsupported review state version'
   end
   local saved = value.identity
   if
@@ -66,7 +79,7 @@ function M.load(directory, identity)
     or saved.baseline ~= identity.baseline
     or saved.target ~= identity.target
   then
-    return nil, 'Review identity mismatch'
+    return false, 'Review identity mismatch'
   end
   if
     not valid_oid(value.from_oid)
@@ -75,7 +88,7 @@ function M.load(directory, identity)
     or type(value.files) ~= 'table'
     or not vim.islist(value.files)
   then
-    return nil, 'Invalid review state schema'
+    return false, 'Invalid review state schema'
   end
   local seen = {}
   for _, record in ipairs(value.files) do
@@ -94,22 +107,38 @@ function M.load(directory, identity)
       or record.removed_lines < 0
       or record.removed_lines % 1 ~= 0
     then
-      return nil, 'Invalid review file record'
+      return false, 'Invalid review file record'
     end
     seen[record.id] = true
   end
   if #value.files ~= vim.tbl_count(seen) then
-    return nil, 'Invalid review file list'
+    return false, 'Invalid review file list'
   end
-  return value, nil
+  return comments.validate(value.comments)
 end
 
 ---@param directory string
 ---@param state ReviewProgress
 ---@return boolean, string|nil
 function M.save(directory, state)
-  local created = vim.fn.mkdir(directory, 'p')
-  if created == 0 and vim.fn.isdirectory(directory) ~= 1 then
+  if type(state) ~= 'table' or type(state.identity) ~= 'table' then
+    return false, 'Invalid review identity'
+  end
+  for _, field in ipairs({ 'repository_root', 'source', 'baseline', 'target' }) do
+    if type(state.identity[field]) ~= 'string' or state.identity[field] == '' then
+      return false, 'Invalid review identity'
+    end
+  end
+  local valid, validation_error = validate(state, state.identity)
+  if not valid then
+    return false, validation_error
+  end
+  local encoded, raw = pcall(vim.json.encode, state)
+  if not encoded then
+    return false, 'Unable to encode review state'
+  end
+  local ok, created = pcall(vim.fn.mkdir, directory, 'p')
+  if not ok or (created == 0 and vim.fn.isdirectory(directory) ~= 1) then
     return false, 'Unable to create review storage directory'
   end
   local path = M.path(directory, state.identity)
@@ -118,7 +147,6 @@ function M.save(directory, state)
   if descriptor == nil then
     return false, err
   end
-  local raw = vim.json.encode(state)
   local written, write_error = vim.uv.fs_write(descriptor, raw, 0)
   local closed, close_error = vim.uv.fs_close(descriptor)
   if written ~= #raw or not closed then

@@ -13,6 +13,7 @@ return {
   'integration.diffs.selected_view_tests',
   'integration.diffs.fingerprint_tests',
   'integration.storage_tests',
+  'integration.comment_state_tests',
   'integration.review_progress_tests',
   'integration.review_refresh_tests',
   'integration.review_tests',
