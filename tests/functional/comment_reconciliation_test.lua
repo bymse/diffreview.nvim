@@ -28,22 +28,20 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     local result, loaded = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
     assert(result.ok and loaded)
     local progress = review_progress.reconcile(nil, loaded)
-    for _, side in ipairs({ 'old', 'current' }) do
-      progress.comments[#progress.comments + 1] = {
-        id = side .. '-saved-note',
-        file_id = 'stored:file.txt',
-        display_path = 'file.txt',
-        body = side .. ' saved body',
-        resolved = side == 'current',
-        stale = false,
-        side = side,
-        start_line = 2,
-        end_line = 3,
-        anchor_lines = { 'anchor', 'range' },
-        context_before = 'before',
-        context_after = 'after',
-      }
-    end
+    progress.comments[1] = {
+      id = 'current-saved-note',
+      file_id = 'stored:file.txt',
+      display_path = 'file.txt',
+      body = 'current saved body',
+      resolved = true,
+      stale = false,
+      side = 'current',
+      start_line = 2,
+      end_line = 3,
+      anchor_lines = { 'anchor', 'range' },
+      context_before = 'before',
+      context_after = 'after',
+    }
     progress.comments[#progress.comments + 1] = {
       id = 'saved-file-note',
       file_id = 'stored:file.txt',
@@ -60,9 +58,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     repo:add('file.txt')
     repo:commit('move baseline')
     repo:write_file('file.txt', moved_current)
-    for index = 1, 2 do
-      expected[index].start_line, expected[index].end_line = 3, 4
-    end
+    expected[1].start_line, expected[1].end_line = 3, 4
     vim.cmd('ReviewStart HEAD')
     local list = functional_review.wait_for_list(1)
     wait_for_comments(loaded, expected)
@@ -73,7 +69,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
 
     local refreshed = { 'extra', 'prefix', 'before', 'anchor', 'range', 'after', 'changed' }
     repo:write_file('file.txt', refreshed)
-    expected[2].start_line, expected[2].end_line = 4, 5
+    expected[1].start_line, expected[1].end_line = 4, 5
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 1)
@@ -91,11 +87,11 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
 
     repo:write_file('file.txt', { 'extra', 'prefix', 'before', 'edited', 'range', 'after', 'changed' })
-    expected[2].stale = true
+    expected[1].stale = true
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     repo:write_file('file.txt', refreshed)
-    expected[2].stale = false
+    expected[1].stale = false
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
 

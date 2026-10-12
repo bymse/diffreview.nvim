@@ -123,7 +123,7 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
           body = 'text',
           resolved = true,
           stale = true,
-          side = 'old',
+          side = 'current',
           start_line = 1,
           end_line = 2,
           anchor_lines = { 'a', 'b' },
@@ -176,6 +176,9 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
       end,
       function(value)
         value.comments[2].side = 'bad'
+      end,
+      function(value)
+        value.comments[2].side = 'old'
       end,
       function(value)
         value.comments[2].start_line = 0

@@ -129,7 +129,7 @@ function ReviewUi:comment_context(first, last)
     return id and { file_id = id } or nil
   end
   local id, side = side_by_side.comment_context(self, window)
-  if id == nil then
+  if id == nil or side == 'old' then
     return nil
   end
   if side == nil then

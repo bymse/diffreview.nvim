@@ -29,7 +29,7 @@ Read `specs/CONTEXT.md` for the approved identity, content snapshot, and stale-s
 
 ## Verification
 
-- Via session start/refresh in real temporary Git repositories, persist comments, move a uniquely identifiable line or range, refresh or restart, and observe the same comment IDs on the new lines; check both old and current sides and unchanged context. File-level comments remain attached through content edits/renames under the same collector ID.
+- Via session start/refresh in real temporary Git repositories, persist comments, move a uniquely identifiable current-side line or range, refresh or restart, and observe the same comment IDs on the new lines, including unchanged context. File-level comments remain attached through content edits/renames under the same collector ID.
 - Exercise modified text, duplicated matching context, vanished side/file, empty comparison, canceled or failed content load, and failed checkpoint save. Observe comments retained as stale when matching is uncertain, retained across restart even if no changed files remain, and no partial state/UI adoption on failure; viewed status continues following its fingerprint rules.
 - Cover an unselected commented file changing after `load_diffs` with a preloaded refresh candidate; verify active state, checkpoint and presentation are preserved. Cover stale text/file identities returning with resolution unchanged, and supported text becoming non-text distinctly from a genuine content-load failure.
 - Run `just lint`, then `just format` and `just format-check`, then `just test` (multiple affected cases).

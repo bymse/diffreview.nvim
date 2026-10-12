@@ -1,4 +1,3 @@
-local helper = require('helpers.functional_comments')
 local review = require('helpers.functional_review')
 local M = {}
 
@@ -17,15 +16,15 @@ end
 
 M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is_canceled_or_reselected_during_git_read = function()
   for _, reselect in ipairs({ false, true }) do
-    helper.with_review(function(repo, saved)
+    review.with_comment_review(function(repo, saved)
       local files = vim.fn.getqflist({ id = 0 }).id
       review.select_path(files, 'file.txt')
       review.wait_for_two_sided_current(repo, 'file.txt', { 'one', 'anchor', 'three' }, { 'one', 'anchor', 'changed' })
       local main = vim.api.nvim_get_current_win()
       local panes = vim.api.nvim_tabpage_list_wins(0)
       vim.cmd('2ReviewComment')
-      helper.write('overlapping attachment', saved)
-      helper.close_editor()
+      review.write_comment('overlapping attachment', saved)
+      review.close_comment_editor()
       repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
       vim.cmd('ReviewRefresh')
       assert(vim.wait(2000, function()
@@ -33,8 +32,8 @@ M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is
       end))
       local original = saved()
       vim.cmd('ReviewComments')
-      local notes = helper.row(1)
-      helper.keys('a')
+      local notes = review.comment_row(1)
+      review.keys('a')
       local file_items = vim.fn.getqflist({ id = files, items = 1 }).items
       local comment_items = vim.fn.getqflist({ id = notes, items = 1 }).items
       local marks = annotations(panes)
@@ -43,8 +42,8 @@ M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is
       assert(vim.deep_equal(saved(), original), 'text attachment must still be waiting for asynchronous Git content')
       vim.cmd('ReviewCommentAttach!')
       if reselect then
-        helper.row(1)
-        helper.keys('a')
+        review.comment_row(1)
+        review.keys('a')
       end
       assert(
         not vim.wait(500, function()
@@ -56,8 +55,8 @@ M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is
       assert(vim.deep_equal(vim.fn.getqflist({ id = notes, items = 1 }).items, comment_items))
       assert(vim.deep_equal(annotations(panes), marks))
       if not reselect then
-        helper.row(1)
-        helper.keys('a')
+        review.comment_row(1)
+        review.keys('a')
       end
       vim.api.nvim_set_current_win(main)
       vim.cmd('3ReviewCommentAttach')

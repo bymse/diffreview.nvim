@@ -49,8 +49,8 @@ local function with_review(run)
   end)
 end
 
-local function text_note(session, side)
-  return assert(session:add_comment({ file_id = id, side = side, start_line = 2, end_line = 3 }, side .. ' note'))
+local function text_note(session)
+  return assert(session:add_comment({ file_id = id, side = 'current', start_line = 2, end_line = 3 }, 'text note'))
 end
 
 local function checkpoint(session)
@@ -59,9 +59,9 @@ local function checkpoint(session)
   return path, vim.fn.readfile(path)[1]
 end
 
-M.refresh_should_move_unique_ranges_and_preserve_resolution_when_both_sides_move = function()
+M.refresh_should_move_unique_ranges_and_preserve_resolution_when_current_text_moves = function()
   with_review(function(session, repo)
-    local old, new = text_note(session, 'old'), text_note(session, 'current')
+    local new = text_note(session)
     assert(session:resolve_comment(new.id))
     assert(session:mark_files({ id }, true))
     repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'base' })
@@ -70,13 +70,13 @@ M.refresh_should_move_unique_ranges_and_preserve_resolution_when_both_sides_move
     repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
     refresh(session)
     local records = session.state.progress.comments
-    assert(records[1].id == old.id and records[2].id == new.id)
+    assert(#records == 1 and records[1].id == new.id)
     for _, record in ipairs(records) do
       assert(not record.stale and record.start_line == 3 and record.end_line == 4)
       assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
       assert(record.context_before == 'before' and record.context_after == 'after')
     end
-    assert(records[2].resolved and not session.state.loaded.files[1].viewed)
+    assert(records[1].resolved and not session.state.loaded.files[1].viewed)
     session:stop()
     start(session, repo)
     assert(vim.deep_equal(session.state.progress.comments, records))
@@ -85,7 +85,7 @@ end
 
 M.refresh_should_retain_last_location_and_reattach_stale_ranges_when_exact_context_returns = function()
   with_review(function(session, repo)
-    local note = text_note(session, 'current')
+    local note = text_note(session)
     assert(session:resolve_comment(note.id))
     for _, lines in ipairs({
       { 'before', 'edited', 'range', 'after', 'changed' },
@@ -107,7 +107,7 @@ end
 
 M.start_should_retain_comment_only_reviews_and_reattach_notes_when_file_identity_returns = function()
   with_review(function(session, repo)
-    local text = text_note(session, 'current')
+    local text = text_note(session)
     local file = assert(session:add_comment({ file_id = id }, 'file note'))
     assert(session:resolve_comment(file.id))
     repo:write_file('file.txt', base)
@@ -132,7 +132,7 @@ end
 
 local function rejected_candidate(change)
   with_review(function(session, repo)
-    text_note(session, 'current')
+    text_note(session)
     select(session, 'new:other.txt')
     local progress, loaded = session.state.progress, session.state.loaded
     local buffer = vim.api.nvim_get_current_buf()
@@ -165,7 +165,7 @@ end
 
 M.refresh_should_stale_text_but_keep_file_notes_when_side_vanishes_or_becomes_binary = function()
   with_review(function(session, repo)
-    local note = text_note(session, 'current')
+    local note = text_note(session)
     local file = assert(session:add_comment({ file_id = id }, 'file note'))
     assert(vim.fn.delete(repo.cwd .. '/file.txt') == 0)
     refresh(session)
@@ -182,7 +182,7 @@ end
 
 M.refresh_should_not_save_or_adopt_when_stop_interrupts_preloaded_comment_loading = function()
   with_review(function(session, repo)
-    text_note(session, 'current')
+    text_note(session)
     local path, raw = checkpoint(session)
     local result, candidate = diffs.load_diffs({ cwd = repo.cwd, from = 'HEAD' })
     assert(result.ok and candidate)
@@ -195,7 +195,7 @@ end
 
 M.refresh_should_stale_text_and_keep_file_notes_when_text_becomes_submodule = function()
   with_review(function(session, repo)
-    text_note(session, 'current')
+    text_note(session)
     assert(session:add_comment({ file_id = id }, 'file note'))
     local oid = repo:current_sha()
     assert(vim.fn.delete(repo.cwd .. '/file.txt') == 0)
@@ -209,7 +209,7 @@ end
 
 M.refresh_should_preserve_review_when_supported_blob_read_fails_in_submodule_candidate = function()
   with_review(function(session, repo)
-    text_note(session, 'current')
+    text_note(session)
     assert(session:add_comment({ file_id = id }, 'file note'))
     local progress, loaded = session.state.progress, session.state.loaded
     local path, raw = checkpoint(session)
@@ -248,7 +248,7 @@ end
 
 M.start_should_preserve_checkpoint_when_stop_cancels_saved_comment_restart = function()
   with_review(function(session, repo)
-    text_note(session, 'old')
+    text_note(session)
     local path, raw = checkpoint(session)
     session:stop()
     session:start({ cwd = repo.cwd, from = 'HEAD' })
@@ -260,7 +260,7 @@ end
 
 M.refresh_should_preserve_comments_and_presentation_when_checkpoint_replace_fails = function()
   with_review(function(session, repo)
-    text_note(session, 'current')
+    text_note(session)
     local progress = session.state.progress
     local buffer = vim.api.nvim_get_current_buf()
     local path, raw = checkpoint(session)
@@ -287,7 +287,7 @@ M.start_should_match_git_snapshot_ranges_when_explicit_target_moves = function()
       return session.state.kind == 'active'
     end))
     select(session, id)
-    local old, new = text_note(session, 'old'), text_note(session, 'current')
+    local new = text_note(session)
     session:stop()
     repo:run_git({ 'checkout', '--quiet', 'target' })
     repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
@@ -299,8 +299,7 @@ M.start_should_match_git_snapshot_ranges_when_explicit_target_moves = function()
       return session.state.kind == 'active'
     end))
     local records = session.state.progress.comments
-    assert(records[1].id == old.id and records[1].start_line == 2 and not records[1].stale)
-    assert(records[2].id == new.id and records[2].start_line == 3 and not records[2].stale)
+    assert(#records == 1 and records[1].id == new.id and records[1].start_line == 3 and not records[1].stale)
   end)
 end
 

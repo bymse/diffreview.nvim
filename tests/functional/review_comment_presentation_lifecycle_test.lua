@@ -1,4 +1,3 @@
-local helper = require('helpers.functional_comments')
 local review = require('helpers.functional_review')
 local M = {}
 
@@ -16,21 +15,21 @@ local function annotations(buffer)
 end
 
 M.review_comments_should_follow_writes_refresh_and_tab_cleanup_without_editing_content = function()
-  helper.with_review(function(repo, saved)
+  review.with_comment_review(function(repo, saved)
     local files = vim.fn.getqflist({ id = 0 }).id
     review.select_path(files, 'file.txt')
     review.wait_for_two_sided_current(repo, 'file.txt', { 'one', 'anchor', 'three' }, { 'one', 'anchor', 'changed' })
     local buffer = vim.api.nvim_get_current_buf()
     local main = vim.api.nvim_get_current_win()
     vim.cmd('2ReviewComment')
-    helper.write('visible body', saved)
+    review.write_comment('visible body', saved)
     assert(#annotations(buffer) == 1 and annotations(buffer)[1][2] == 1)
-    helper.write('updated body', saved)
+    review.write_comment('updated body', saved)
     assert(annotations(buffer)[1][4].virt_text[1][1]:find('updated body'))
-    helper.close_editor()
+    review.close_comment_editor()
     vim.cmd('ReviewComments')
-    helper.row(1)
-    helper.keys('r')
+    review.comment_row(1)
+    review.keys('r')
     assert(annotations(buffer)[1][4].virt_text[1][1]:find('resolved'))
     repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
     vim.cmd('ReviewRefresh')
@@ -52,10 +51,10 @@ M.review_comments_should_follow_writes_refresh_and_tab_cleanup_without_editing_c
 end
 
 M.review_comments_should_open_from_closed_drawer_when_refresh_and_restart_have_only_saved_comments = function()
-  helper.with_review(function(repo, saved)
+  review.with_comment_review(function(repo, saved)
     vim.cmd('ReviewComment')
-    helper.write('retained note', saved)
-    helper.close_editor()
+    review.write_comment('retained note', saved)
+    review.close_comment_editor()
     local original = saved().comments[1].id
     vim.cmd('ReviewFiles')
     repo:write_file('file.txt', { 'one', 'anchor', 'three' })
@@ -63,19 +62,19 @@ M.review_comments_should_open_from_closed_drawer_when_refresh_and_restart_have_o
     assert(vim.wait(2000, function()
       return vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments' and saved().comments[1].stale
     end))
-    local notes = helper.row(1)
-    helper.keys('<CR>')
+    local notes = review.comment_row(1)
+    review.keys('<CR>')
     assert(vim.bo.buftype == 'quickfix')
-    helper.keys('e')
-    helper.write('still editable', saved)
-    helper.close_editor()
+    review.keys('e')
+    review.write_comment('still editable', saved)
+    review.close_comment_editor()
     vim.cmd('ReviewStop')
     vim.cmd('ReviewStart HEAD')
     assert(vim.wait(2000, function()
       local list = vim.fn.getqflist({ title = 1, id = 0, items = 1 })
       return list.id ~= notes and list.title == 'Diff Review Comments' and #list.items == 1
     end))
-    helper.row(1)
+    review.comment_row(1)
     assert(saved().comments[1].id == original and saved().comments[1].body == 'still editable')
   end)
 end

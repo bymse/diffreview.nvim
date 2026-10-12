@@ -1,58 +1,66 @@
-local helper = require('helpers.functional_comments')
 local review = require('helpers.functional_review')
 local M = {}
 
 M.review_comments_should_navigate_edit_toggle_and_delete_when_native_rows_are_selected = function()
-  helper.with_review(function(repo, saved)
+  review.with_comment_review(function(repo, saved)
     local files = vim.fn.getqflist({ id = 0 }).id
     vim.cmd('ReviewComment')
-    helper.write('file note', saved)
-    helper.close_editor()
+    review.write_comment('file note', saved)
+    review.close_comment_editor()
     review.select_path(files, 'file.txt')
     review.wait_for_two_sided_current(repo, 'file.txt', { 'one', 'anchor', 'three' }, { 'one', 'anchor', 'changed' })
     local main = vim.api.nvim_get_current_win()
-    local old = vim.api.nvim_tabpage_list_wins(0)[1]
-    vim.api.nvim_set_current_win(old)
     vim.cmd('2,3ReviewComment')
-    helper.write('old range', saved)
-    local old_buffer = vim.api.nvim_win_get_buf(old)
+    review.write_comment('current range', saved)
+    local current_buffer = vim.api.nvim_win_get_buf(main)
     local ranges = 0
     for name, namespace in pairs(vim.api.nvim_get_namespaces()) do
       if name:match('^diffreview%.comments%.') then
-        local marks = vim.api.nvim_buf_get_extmarks(old_buffer, namespace, 0, -1, { details = true })
-        ranges = ranges + #marks
-        if #marks > 0 then
-          assert(marks[1][2] == 1 and marks[1][4].end_row == 3)
+        local marks = vim.api.nvim_buf_get_extmarks(current_buffer, namespace, 0, -1, { details = true })
+        for _, mark in ipairs(marks) do
+          if mark[4].end_row then
+            ranges = ranges + 1
+            assert(mark[2] == 1 and mark[4].end_row == 3)
+          end
         end
       end
     end
     assert(ranges == 1)
-    helper.close_editor()
+    for _, window in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+      if window ~= main and vim.api.nvim_win_get_buf(window) ~= vim.api.nvim_get_current_buf() then
+        for name, namespace in pairs(vim.api.nvim_get_namespaces()) do
+          if name:match('^diffreview%.comments%.') then
+            assert(#vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(window), namespace, 0, -1, {}) == 0)
+          end
+        end
+      end
+    end
+    review.close_comment_editor()
     vim.cmd('ReviewComments')
-    local notes = helper.row(2)
-    helper.keys('<CR>')
+    local notes = review.comment_row(2)
+    review.keys('<CR>')
     assert(vim.wait(2000, function()
-      return vim.api.nvim_get_current_win() == old and vim.api.nvim_win_get_cursor(old)[1] == 2
+      return vim.api.nvim_get_current_win() == main and vim.api.nvim_win_get_cursor(main)[1] == 2
     end))
     assert(saved().files[1].viewed_fingerprint == nil)
     vim.cmd('ReviewComments')
-    helper.row(1)
-    helper.keys('<CR>')
+    review.comment_row(1)
+    review.keys('<CR>')
     assert(vim.wait(2000, function()
       return vim.api.nvim_get_current_win() == main
     end))
     vim.cmd('ReviewComments')
-    helper.row(2)
-    helper.keys('r')
+    review.comment_row(2)
+    review.keys('r')
     assert(saved().comments[2].resolved)
-    helper.keys('r')
+    review.keys('r')
     assert(not saved().comments[2].resolved)
-    helper.keys('e')
-    helper.write('edited', saved)
+    review.keys('e')
+    review.write_comment('edited', saved)
     assert(saved().comments[2].body == 'edited')
-    helper.close_editor()
-    helper.row(2)
-    helper.keys('d')
+    review.close_comment_editor()
+    review.comment_row(2)
+    review.keys('d')
     assert(#saved().comments == 1)
     vim.cmd('ReviewFiles')
     assert(vim.fn.getqflist({ id = 0 }).id == files)

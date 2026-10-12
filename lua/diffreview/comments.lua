@@ -7,7 +7,7 @@ local M = {}
 ---@field body string
 ---@field resolved boolean
 ---@field stale boolean
----@field side 'old'|'current'|nil
+---@field side 'current'|nil
 ---@field start_line integer|nil
 ---@field end_line integer|nil
 ---@field anchor_lines string[]|nil
@@ -16,7 +16,7 @@ local M = {}
 
 ---@class CommentLocation
 ---@field file_id string
----@field side 'old'|'current'|nil
+---@field side 'current'|nil
 ---@field start_line integer|nil
 ---@field end_line integer|nil
 
@@ -45,7 +45,7 @@ function M.valid_location(location)
   if location.side == nil then
     return location.start_line == nil and location.end_line == nil
   end
-  return (location.side == 'old' or location.side == 'current')
+  return location.side == 'current'
     and positive_integer(location.start_line)
     and positive_integer(location.end_line)
     and location.start_line <= location.end_line

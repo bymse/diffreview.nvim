@@ -69,28 +69,28 @@ M.add_comment_should_persist_management_and_viewed_progress_when_review_restarts
   with_review(function(session, repo)
     assert(session:mark_files({ file_id }, true))
     select(session, file_id)
-    local old =
-      assert(session:add_comment({ file_id = file_id, side = 'old', start_line = 2, end_line = 3 }, 'old note'))
-    assert(not old.resolved and not old.stale)
-    assert(vim.deep_equal(old.anchor_lines, { 'same', 'old' }))
-    assert(old.context_before == 'before' and old.context_after == 'after')
+    local range =
+      assert(session:add_comment({ file_id = file_id, side = 'current', start_line = 2, end_line = 3 }, 'range note'))
+    assert(not range.resolved and not range.stale)
+    assert(vim.deep_equal(range.anchor_lines, { 'same', 'new' }))
+    assert(range.context_before == 'before' and range.context_after == 'after')
     local current =
       assert(session:add_comment({ file_id = file_id, side = 'current', start_line = 1, end_line = 1 }, 'current note'))
     assert(current.context_before == nil and current.context_after == 'same')
     local note = assert(session:add_comment({ file_id = 'new:other.txt' }, 'file note'))
     assert(note.side == nil and note.anchor_lines == nil and note.start_line == nil)
-    assert(old.id ~= current.id and current.id ~= note.id)
-    old.body = 'detached'
-    old.anchor_lines[1] = 'detached'
-    local edited = assert(session:edit_comment(old.id, 'edited'))
+    assert(range.id ~= current.id and current.id ~= note.id)
+    range.body = 'detached'
+    range.anchor_lines[1] = 'detached'
+    local edited = assert(session:edit_comment(range.id, 'edited'))
     assert(edited.anchor_lines[1] == 'same')
     edited.body = 'detached again'
-    assert(session:resolve_comment(old.id).resolved)
-    assert(not session:reopen_comment(old.id).resolved)
-    assert(session:resolve_comment(old.id).resolved)
+    assert(session:resolve_comment(range.id).resolved)
+    assert(not session:reopen_comment(range.id).resolved)
+    assert(session:resolve_comment(range.id).resolved)
     local attached =
-      assert(session:reattach_comment(old.id, { file_id = file_id, side = 'current', start_line = 3, end_line = 4 }))
-    assert(attached.id == old.id and attached.body == 'edited' and attached.resolved and not attached.stale)
+      assert(session:reattach_comment(range.id, { file_id = file_id, side = 'current', start_line = 3, end_line = 4 }))
+    assert(attached.id == range.id and attached.body == 'edited' and attached.resolved and not attached.stale)
     assert(vim.deep_equal(attached.anchor_lines, { 'new', 'after' }) and attached.context_after == nil)
     assert(session:delete_comment(current.id))
     local directory, identity = session.state.loaded.storage_path, session.state.loaded.identity
@@ -118,10 +118,11 @@ M.comment_mutations_should_preserve_checkpoint_when_request_is_invalid = functio
     local locations = {
       { file_id = 'missing' },
       { file_id = file_id, side = 'wrong', start_line = 1, end_line = 1 },
-      { file_id = file_id, side = 'old', start_line = 0, end_line = 1 },
-      { file_id = file_id, side = 'old', start_line = 3, end_line = 2 },
-      { file_id = file_id, side = 'old', start_line = 1.5, end_line = 2 },
-      { file_id = file_id, side = 'old', start_line = 1 },
+      { file_id = file_id, side = 'current', start_line = 0, end_line = 1 },
+      { file_id = file_id, side = 'current', start_line = 3, end_line = 2 },
+      { file_id = file_id, side = 'current', start_line = 1.5, end_line = 2 },
+      { file_id = file_id, side = 'current', start_line = 1 },
+      { file_id = file_id, side = 'old', start_line = 1, end_line = 1 },
       { file_id = file_id, start_line = 1, end_line = 1 },
     }
     for _, location in ipairs(locations) do
@@ -129,11 +130,14 @@ M.comment_mutations_should_preserve_checkpoint_when_request_is_invalid = functio
       assert(result == nil and err ~= nil)
       assert(not session:reattach_comment(note.id, location))
     end
-    assert(not session:add_comment({ file_id = file_id, side = 'old', start_line = 1, end_line = 1 }, 'unselected'))
+    assert(not session:add_comment({ file_id = file_id, side = 'current', start_line = 1, end_line = 1 }, 'unselected'))
     select(session, file_id)
     assert(not session:add_comment({ file_id = file_id, side = 'current', start_line = 5, end_line = 5 }, 'outside'))
     assert(
-      not session:add_comment({ file_id = 'new:other.txt', side = 'old', start_line = 1, end_line = 1 }, 'unselected')
+      not session:add_comment(
+        { file_id = 'new:other.txt', side = 'current', start_line = 1, end_line = 1 },
+        'unselected'
+      )
     )
     for _, body in ipairs({ '', ' \n\t' }) do
       assert(not session:add_comment({ file_id = file_id }, body))
@@ -188,7 +192,8 @@ M.add_comment_should_preserve_checkpoint_when_stop_interrupts_content_loading = 
     local path, raw = checkpoint(session)
     local done, result, err
     local running = coroutine.create(function()
-      result, err = session:add_comment({ file_id = file_id, side = 'old', start_line = 1, end_line = 1 }, 'canceled')
+      result, err =
+        session:add_comment({ file_id = file_id, side = 'current', start_line = 1, end_line = 1 }, 'canceled')
       done = true
     end)
     assert(coroutine.resume(running))
@@ -229,7 +234,7 @@ M.reattach_comment_should_clear_staleness_and_preserve_identity_when_location_ki
     start(session, repo)
     select(session, file_id)
     local text =
-      assert(session:reattach_comment(note.id, { file_id = file_id, side = 'old', start_line = 2, end_line = 2 }))
+      assert(session:reattach_comment(note.id, { file_id = file_id, side = 'current', start_line = 2, end_line = 2 }))
     assert(text.resolved and not text.stale and text.body == 'note' and text.id == note.id)
     assert(vim.deep_equal(text.anchor_lines, { 'same' }))
     local file = assert(session:reattach_comment(note.id, { file_id = 'new:other.txt' }))
@@ -245,7 +250,8 @@ M.reattach_comment_should_reject_superseded_operation_when_content_loading_yield
     local note = assert(session:add_comment({ file_id = file_id }, 'note'))
     local done, result, err
     local running = coroutine.create(function()
-      result, err = session:reattach_comment(note.id, { file_id = file_id, side = 'old', start_line = 1, end_line = 1 })
+      result, err =
+        session:reattach_comment(note.id, { file_id = file_id, side = 'current', start_line = 1, end_line = 1 })
       done = true
     end)
     assert(coroutine.resume(running))
@@ -258,7 +264,8 @@ M.reattach_comment_should_reject_superseded_operation_when_content_loading_yield
     assert(#assert(storage.load(session.state.loaded.storage_path, session.state.loaded.identity)).comments == 0)
     done = false
     running = coroutine.create(function()
-      result, err = session:add_comment({ file_id = file_id, side = 'old', start_line = 1, end_line = 1 }, 'switched')
+      result, err =
+        session:add_comment({ file_id = file_id, side = 'current', start_line = 1, end_line = 1 }, 'switched')
       done = true
     end)
     assert(coroutine.resume(running))

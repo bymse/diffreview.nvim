@@ -63,3 +63,19 @@ Follow-up risks: native quickfix history remains global but actions validate own
 ## Completion — 2026-10-12
 
 All four specs completed in filename order with fresh implementers, gap-review approval, independent canonical gates, and passing quality-judge review. Each phase has evidence and promoted durable learnings. Final implementation provides local durable comments, exact reconciliation, write-to-save editing, independent comment browsing/management and annotations. No verification gates remain blocked or skipped.
+
+## Review Feedback Fixes — 2026-10-12
+
+Status: PASS
+
+User-approved decisions: retain unique exact text/context matching; text comments are allowed only on the new/current side. Old-side text locations are rejected for creation and reattachment, including old-only deleted-file panes. File-level notes remain supported through changed-file rows, including deleted files, and presented non-text views.
+
+Changed files: `lua/diffreview/comments.lua` restricts location types and shared record validation to `current` or file notes; `lua/diffreview/ui/init.lua` rejects old-side creation/attachment contexts before opening an editor. Comment state, storage, reconciliation, editor, attachment, navigation and annotation tests were updated to exercise current-side behavior and old-side rejection. Shared comment fixtures, write/list/editor helpers were moved into `tests/helpers/functional_review.lua`; `tests/helpers/functional_comments.lua` was removed and all consumers updated. `specs/CONTEXT.md` and specs 001–004 now describe current-side-only text comments.
+
+Anchoring research: the user's plugin at `~/.config/nvim/lua/review/comments.lua` and `state.lua` stores fixed hunk-line ranges, selected `code_context` and a file `diff_hash`, marking comments stale when the diff changes rather than searching for moved text. The user explicitly chose to retain this repository's unique text/context matching for now.
+
+Submodule decision: retain the `160000` fingerprint branch. `load_diffs` fingerprints all collected entries, including staged Gitlink changes and regular-file-to-submodule transitions; using the Gitlink OID avoids reading a submodule directory as a regular file. This does not enable submodule text rendering.
+
+Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Final results: 50 unit, 200 integration and 87 functional tests, 337 total with zero failures. During verification, the current-side annotation assertion was corrected to distinguish a range annotation from the file-note annotation now sharing the current buffer.
+
+Follow-up risks: no known outstanding failures. Existing old-side comment records are invalid under the corrected schema contract; no automatic conversion or silent reassignment was introduced. The user's `comments.md` review input was preserved.

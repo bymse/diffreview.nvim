@@ -27,7 +27,7 @@ M.render_should_keep_stale_text_at_file_level_and_clear_only_comments_when_reuse
       file_id = 'file',
       display_path = 'file',
       body = 'lost',
-      side = 'old',
+      side = 'current',
       start_line = 3,
       end_line = 3,
       stale = true,
