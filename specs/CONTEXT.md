@@ -1,0 +1,29 @@
+# Context: Local Review Comments
+
+## Issue Summary
+
+The plugin currently persists changed-file progress but has no comment records, editing interface, or comment presentation. Reviewers need local feedback that survives review restart and file changes without being lost when a line no longer matches.
+
+## Final Goal
+
+Reviewers write line, consecutive-line-range, and file-level comments in displayed side-by-side review files, including unchanged text and either visible diff side; file-list entries and non-text review views support file-level notes. Comments persist with stable identities and explicit resolved state, can be edited, deleted, reopened, and reattached, appear as virtual text where displayable, and remain discoverable in a separate comment quickfix list when stale or when no changed files remain. The changed-file and comment quickfix lists remain independent but occupy the same bottom drawer one at a time. `ReviewComment` opens a temporary editor; writing commits, closing without writing discards changes, and empty saved text deletes an existing comment. There is no publishing, Markdown export, automatic refresh, comment creation outside the displayed review, or inline-mode enablement.
+
+## Key Design Decisions
+
+- Structured review state is authoritative; editor buffers, extmarks, and quickfix lists are disposable projections. Save a candidate checkpoint before exposing a successful comment mutation; a failed save must leave both active state and presentation intact.
+- Keep the existing Git-specific `diffreview-nvim` storage location and exact repository/source/baseline/target identity, including the current distinction between worktree and explicit-target reviews. Move the checkpoint schema forward in place without migration; the user assumes there are no old checkpoints to preserve. Persist only local comment fields, with no remote IDs or publication status.
+- A text comment has a stable file ID, an old/current side, one or more consecutive line numbers, and captured line content plus nearby context. On explicit refresh or restart, reattach only to a unique exact match in the same file identity and side, including when lines move; ambiguous or absent matches are stale, never silently reassigned. A file-level note remains attached while its file identity is present. Comments for removed comparison entries remain available as stale; resolution remains manual and independent of staleness.
+- `ReviewComment` uses a visual line selection if given, the current review line otherwise, or the selected changed-file quickfix row for a file-level note; non-text views use file-level location. Saving empty content deletes an existing comment; new empty content creates nothing. An unsaved editor prevents manual refresh until saved or closed. Stop/close must not silently discard uncommitted text.
+- Keep two separately owned native quickfix lists, not a combined list. Only one appears in the bottom drawer; commands switch or toggle the lists. Resolved comments remain visible with status. Choosing a stale comment in the comment list, moving to a valid new review location, and explicitly reattaching preserves its comment identity and manual resolution state.
+- Keep old or renamed file identity as defined by the diff collector. Files outside the changed-file list and other unfinished UI modes are excluded. Where a file or side cannot be rendered as text, a file-level note is still available when the review view presents that file.
+- Correctness risks: worktree text may change between diff load and comment save; content reads and refresh reconciliation must use a consistent comparison snapshot or reject a mismatched candidate. Native quickfix history is global; ownership, mappings, and drawer switching must not operate on an unrelated list.
+
+## Codebase Map
+
+- `lua/diffreview/init.lua` registers public review commands and delegates to the configured session; `lua/diffreview/review.lua` owns start, stop, selected-file loading, manual refresh, state updates, and UI callbacks.
+- `lua/diffreview/review_progress.lua` defines `ReviewProgress`/`ReviewIdentity` and reconciles persisted file records with current diffs; `lua/diffreview/storage.lua` validates and atomically replaces per-identity JSON checkpoints.
+- `lua/diffreview/diffs/init.lua` provides `load_diffs`, `load_selected_view`, stable file IDs, per-file fingerprints, storage path and review identity; `lua/diffreview/diffs/content.lua` represents old/current snapshot or path-backed text. A file fingerprint encodes more than text and cannot substitute for context matching.
+- `lua/diffreview/ui/init.lua` owns the review tab, presentation callbacks and quickfix ID; `lua/diffreview/ui/quickfix.lua` owns the current file-list quickfix ID, row mapping, drawer, and buffer-local selection map.
+- `lua/diffreview/ui/side_by_side.lua` owns old/current windows, scratch/path-backed buffers and cleanup; `lua/diffreview/ui/decorations.lua` sets/clears existing diff extmarks. Comment annotations need their own lifecycle so they cannot erase diff highlights or leak onto reused buffers.
+- `tests/integration/storage_tests.lua`, `tests/integration/review_progress_tests.lua`, and `tests/integration/review_refresh_tests.lua` cover checkpoint and refresh behavior against real Git fixtures; `tests/integration/ui/quickfix_tests.lua` covers quickfix ownership. `tests/functional/user_commands_test.lua` and `tests/helpers/functional_review.lua` cover command-driven editor behavior. Register new suites in `tests/integration/init.lua` or `tests/functional/init.lua`.
+- `AGENTS.md` requires LuaLS, formatting, and affected-part tests; `justfile` provides `just lint`, `just format`, `just format-check`, and `just test`. Use lowercase snake_case test names and real editor/Git fixtures; functional tests cover key-driven behavior, integration tests cover module interfaces.
