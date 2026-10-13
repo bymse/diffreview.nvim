@@ -26,7 +26,7 @@ local function selected_view(repo, file_id, from, to)
   assert(result.ok, result.error and result.error.detail)
   assert(loaded ~= nil, 'expected loaded review summaries')
   assert(loaded.entries_by_id[file_id] ~= nil, 'expected selected entry in loaded review')
-  local view = diffs.load_selected_view(loaded, file_id)
+  local view = diffs.load_selected_view_model(loaded, file_id)
   assert(view ~= nil, 'expected selected view')
   validator.validate(view)
   return loaded, view
@@ -46,7 +46,7 @@ local function snapshot(version)
   return content
 end
 
-M.load_selected_view_should_return_worktree_bytes_when_a_tracked_file_changes = function()
+M.load_selected_view_model_should_return_worktree_bytes_when_a_tracked_file_changes = function()
   git_repo.with_repo(function(repo)
     local base = git_states.modify_file(repo, 'same-lines.txt', 'unstaged')
 
@@ -60,7 +60,7 @@ M.load_selected_view_should_return_worktree_bytes_when_a_tracked_file_changes = 
   end)
 end
 
-M.load_selected_view_should_use_explicit_revision_blobs_instead_of_worktree_files = function()
+M.load_selected_view_model_should_use_explicit_revision_blobs_instead_of_worktree_files = function()
   git_repo.with_repo(function(repo)
     repo:write_file('revision.txt', { 'first' })
     repo:add('revision.txt')
@@ -81,7 +81,7 @@ M.load_selected_view_should_use_explicit_revision_blobs_instead_of_worktree_file
   end)
 end
 
-M.load_selected_view_should_preserve_text_snapshot_line_endings_and_empty_content = function()
+M.load_selected_view_model_should_preserve_text_snapshot_line_endings_and_empty_content = function()
   git_repo.with_repo(function(repo)
     write_raw(repo.cwd .. '/dos.txt', 'first\r\nsecond\r\n')
     write_raw(repo.cwd .. '/mac.txt', 'one\rtwo\r')
@@ -110,7 +110,7 @@ M.load_selected_view_should_preserve_text_snapshot_line_endings_and_empty_conten
   end)
 end
 
-M.load_selected_view_should_report_mode_only_changes_without_text_changes = function()
+M.load_selected_view_model_should_report_mode_only_changes_without_text_changes = function()
   git_repo.with_repo(function(repo)
     repo:write_file('script.sh', { 'run' })
     repo:add('script.sh')
@@ -125,7 +125,7 @@ M.load_selected_view_should_report_mode_only_changes_without_text_changes = func
   end)
 end
 
-M.load_selected_view_should_return_binary_metadata_for_binary_content = function()
+M.load_selected_view_model_should_return_binary_metadata_for_binary_content = function()
   git_repo.with_repo(function(repo)
     write_raw(repo.cwd .. '/binary.bin', '\0old')
     repo:add('binary.bin')
@@ -141,7 +141,7 @@ M.load_selected_view_should_return_binary_metadata_for_binary_content = function
   end)
 end
 
-M.load_selected_view_should_show_type_change_information_with_symlink_target_snapshot = function()
+M.load_selected_view_model_should_show_type_change_information_with_symlink_target_snapshot = function()
   git_repo.with_repo(function(repo)
     repo:write_file('type.txt', { 'regular file' })
     repo:add('type.txt')
@@ -159,7 +159,7 @@ M.load_selected_view_should_show_type_change_information_with_symlink_target_sna
   end)
 end
 
-M.load_selected_view_should_preserve_committed_and_untracked_symlink_target_bytes = function()
+M.load_selected_view_model_should_preserve_committed_and_untracked_symlink_target_bytes = function()
   git_repo.with_repo(function(repo)
     assert(vim.uv.fs_symlink('first-target', repo.cwd .. '/tracked-link'), 'failed to create committed symlink')
     repo:add('tracked-link')
@@ -192,7 +192,7 @@ M.load_selected_view_should_preserve_committed_and_untracked_symlink_target_byte
   end)
 end
 
-M.load_selected_view_should_map_added_deleted_modified_and_renamed_entries = function()
+M.load_selected_view_model_should_map_added_deleted_modified_and_renamed_entries = function()
   git_repo.with_repo(function(repo)
     repo:write_file('deleted.txt', { 'deleted baseline' })
     repo:write_file('renamed.txt', { 'renamed baseline' })
@@ -221,7 +221,7 @@ M.load_selected_view_should_map_added_deleted_modified_and_renamed_entries = fun
   end)
 end
 
-M.load_selected_view_should_map_copied_entries_with_both_source_and_destination = function()
+M.load_selected_view_model_should_map_copied_entries_with_both_source_and_destination = function()
   git_repo.with_repo(function(repo)
     repo:write_file('source.txt', { 'copy source', 'second line' })
     repo:add('source.txt')
@@ -240,7 +240,7 @@ M.load_selected_view_should_map_copied_entries_with_both_source_and_destination 
   end)
 end
 
-M.load_selected_view_should_use_current_conflict_content_for_worktree_comparison = function()
+M.load_selected_view_model_should_use_current_conflict_content_for_worktree_comparison = function()
   git_repo.with_repo(function(repo)
     repo:write_file('conflict.txt', { 'base' })
     repo:add('conflict.txt')
@@ -266,14 +266,14 @@ M.load_selected_view_should_use_current_conflict_content_for_worktree_comparison
   end)
 end
 
-M.load_selected_view_should_return_error_view_when_known_worktree_content_disappears = function()
+M.load_selected_view_model_should_return_error_view_when_known_worktree_content_disappears = function()
   git_repo.with_repo(function(repo)
     local base = git_states.add_file(repo, 'untracked.txt', 'untracked')
     local result, loaded = diffs.load_diffs({ cwd = repo.cwd, from = base })
     assert(result.ok and loaded ~= nil, 'expected summary load before content selection')
     assert(vim.fn.delete(repo.cwd .. '/untracked.txt') == 0, 'failed to remove selected fixture')
 
-    local view = diffs.load_selected_view(loaded, 'new:untracked.txt')
+    local view = diffs.load_selected_view_model(loaded, 'new:untracked.txt')
 
     assert(view ~= nil and view.operation == 'error', 'expected per-file content error view')
     assert(view.attempted_operation == 'untracked' and view.path == 'untracked.txt')
@@ -281,7 +281,7 @@ M.load_selected_view_should_return_error_view_when_known_worktree_content_disapp
   end)
 end
 
-M.load_selected_view_should_return_nil_for_unknown_ids_and_canceled_operations = function()
+M.load_selected_view_model_should_return_nil_for_unknown_ids_and_canceled_operations = function()
   git_repo.with_repo(function(repo)
     repo:write_file('tracked.txt', { 'base' })
     repo:add('tracked.txt')
@@ -292,16 +292,16 @@ M.load_selected_view_should_return_nil_for_unknown_ids_and_canceled_operations =
     local operation = async_operation.new()
     async_operation.cancel(operation)
 
-    assert(diffs.load_selected_view(loaded, 'unknown:file.txt') == nil, 'expected unknown ID to return nil')
+    assert(diffs.load_selected_view_model(loaded, 'unknown:file.txt') == nil, 'expected unknown ID to return nil')
     assert(
-      diffs.load_selected_view(loaded, 'stored:tracked.txt', operation) == nil,
+      diffs.load_selected_view_model(loaded, 'stored:tracked.txt', operation) == nil,
       'expected cancellation to return nil'
     )
 
     local selection_operation = async_operation.new()
     local selected
     local worker = coroutine.create(function()
-      selected = diffs.load_selected_view(loaded, 'stored:tracked.txt', selection_operation)
+      selected = diffs.load_selected_view_model(loaded, 'stored:tracked.txt', selection_operation)
     end)
     local started, start_error = coroutine.resume(worker)
     assert(started, start_error)

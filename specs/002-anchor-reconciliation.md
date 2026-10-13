@@ -2,6 +2,8 @@
 
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's independent resolution/staleness and explicit-side representation. Resolved comments remain resolved; reopening rechecks current attachment eligibility.
 
+Naming follow-up: the selected comparison loader is now `diffs.load_selected_view_model`; session helpers and their result collections also spell out view-model terminology.
+
 ## Goal
 
 Preserve comments through review refresh and restart, keeping uniquely matching text locations attached and retaining uncertain or absent locations as stale.

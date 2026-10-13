@@ -282,7 +282,7 @@ end
 ---@param operation AsyncOperation|nil
 ---@param snapshot_worktree boolean|nil
 ---@return DiffViewModel|nil, WorktreeFingerprintInput|nil, boolean|nil nontext True only for a metadata-identified submodule after supported-side reads succeed.
-function M.load_selected_view(loaded, file_id, operation, snapshot_worktree)
+function M.load_selected_view_model(loaded, file_id, operation, snapshot_worktree)
   if async_operation.is_canceled(operation) then
     return nil
   end

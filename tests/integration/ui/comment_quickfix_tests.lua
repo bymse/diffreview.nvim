@@ -1,5 +1,5 @@
 local ui = require('diffreview.ui')
-local quickfix = require('diffreview.ui.quickfix')
+local quickfix = require('diffreview.ui.comments_list')
 local handlers = require('helpers.ui_handlers')
 local M = {}
 

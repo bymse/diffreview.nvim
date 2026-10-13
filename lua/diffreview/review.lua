@@ -3,7 +3,7 @@ local diffs = require('diffreview.diffs')
 local ui = require('diffreview.ui')
 local storage = require('diffreview.storage')
 local review_progress = require('diffreview.review_progress')
-local quickfix = require('diffreview.ui.quickfix')
+local files_list = require('diffreview.ui.files_list')
 local comments = require('diffreview.comments')
 local comment_editor = require('diffreview.ui.comment_editor')
 
@@ -96,7 +96,7 @@ local function select_file(session, file_id, comment)
 
   local running = coroutine.create(function()
     local ok, err = xpcall(function()
-      local diff = diffs.load_selected_view(active.loaded, file_id, active.operation)
+      local diff = diffs.load_selected_view_model(active.loaded, file_id, active.operation)
       if diff == nil or not is_selection_current(session, active, request) then
         return
       end
@@ -162,8 +162,8 @@ end
 ---@param operation AsyncOperation
 ---@param current fun(): boolean
 ---@return DiffViewModel|nil
-local function load_matching_view(loaded, id, operation, current)
-  local diff, snapshot, nontext = diffs.load_selected_view(loaded, id, operation, true)
+local function load_matching_view_model(loaded, id, operation, current)
+  local diff, snapshot, nontext = diffs.load_selected_view_model(loaded, id, operation, true)
   if not current() then
     return nil
   end
@@ -187,21 +187,21 @@ end
 ---@param operation AsyncOperation
 ---@param current fun(): boolean
 ---@return table<string, DiffViewModel>|nil
-local function load_comment_views(loaded, records, operation, current)
-  local views, seen = {}, {}
+local function load_comment_view_models(loaded, records, operation, current)
+  local view_models, seen = {}, {}
   for _, record in ipairs(records) do
     local id = record.file_id
     local entry = loaded.entries_by_id[id]
     if record.start_line ~= nil and entry ~= nil and not seen[id] then
       seen[id] = true
-      local diff = load_matching_view(loaded, id, operation, current)
+      local diff = load_matching_view_model(loaded, id, operation, current)
       if diff == nil then
         return nil
       end
-      views[id] = diff
+      view_models[id] = diff
     end
   end
-  return views
+  return view_models
 end
 
 ---@param options ReviewStartOptions
@@ -239,13 +239,13 @@ function ReviewSession:start(options)
         fail_start(self, operation, review_ui, load_error)
         return
       end
-      local views = load_comment_views(loaded, previous and previous.comments or {}, operation, function()
+      local view_models = load_comment_view_models(loaded, previous and previous.comments or {}, operation, function()
         return is_start_operation_current(self, operation)
       end)
-      if views == nil or not is_start_operation_current(self, operation) then
+      if view_models == nil or not is_start_operation_current(self, operation) then
         return
       end
-      local progress = review_progress.reconcile(previous, loaded, views)
+      local progress = review_progress.reconcile(previous, loaded, view_models)
       if
         (#loaded.files > 0 or previous ~= nil)
         and not vim.deep_equal(previous, progress)
@@ -262,15 +262,27 @@ function ReviewSession:start(options)
         vim.notify('No changes to review', vim.log.levels.INFO)
         return
       end
-      review_ui = ui.get_ui({
-        on_comment_action = function(key, id)
+      local function comment_handler(action)
+        return function(id)
           coroutine.wrap(function()
-            local accepted, action_error = self:comment_action(key, id)
+            local active = self.state
+            if active.kind ~= 'active' or (active.editor and active.editor:blocked()) then
+              vim.notify('Save or close the comment editor', vim.log.levels.ERROR)
+              return
+            end
+            local accepted, action_error = action(self, id)
             if not accepted then
               vim.notify(action_error or 'Comment action unavailable', vim.log.levels.ERROR)
             end
           end)()
-        end,
+        end
+      end
+      review_ui = ui.get_ui({
+        on_comment_navigate = comment_handler(self.navigate_comment),
+        on_comment_edit = comment_handler(self.edit_comment_by_id),
+        on_comment_delete = comment_handler(self.delete_comment),
+        on_comment_toggle_resolution = comment_handler(self.toggle_comment_resolution),
+        on_comment_begin_attachment = comment_handler(self.begin_comment_attachment),
         on_file_selected = function(file_id)
           select_file(self, file_id)
         end,
@@ -367,15 +379,15 @@ function ReviewSession:refresh(preloaded)
       then
         error('Review identity changed; start a new review')
       end
-      local views = load_comment_views(loaded, active.progress.comments, request, current)
-      if views == nil or not current() then
+      local view_models = load_comment_view_models(loaded, active.progress.comments, request, current)
+      if view_models == nil or not current() then
         return
       end
-      local candidate = review_progress.reconcile(active.progress, loaded, views)
+      local candidate = review_progress.reconcile(active.progress, loaded, view_models)
       local selected = active.selected_id
       local diff
       if selected ~= nil and loaded.entries_by_id[selected] ~= nil then
-        diff = views[selected] or load_matching_view(loaded, selected, request, current)
+        diff = view_models[selected] or load_matching_view_model(loaded, selected, request, current)
         if not current() then
           return
         end
@@ -441,48 +453,68 @@ function ReviewSession:toggle_comments()
   return true, nil
 end
 
----@param key string
+---@param session ReviewSession
 ---@param id string
----@return boolean|nil, string|nil
-function ReviewSession:comment_action(key, id)
-  local active = self.state
+---@return ReviewComment|nil, string|nil
+local function actionable_comment(session, id)
+  local active = session.state
   if active.kind ~= 'active' or (active.editor and active.editor:blocked()) then
     return nil, 'Save or close the comment editor'
   end
-  local record
   for _, candidate in ipairs(active.progress.comments) do
     if candidate.id == id then
-      record = candidate
-      break
+      return candidate, nil
     end
   end
+  return nil, 'Unknown comment ID'
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+function ReviewSession:navigate_comment(id)
+  local record, err = actionable_comment(self, id)
   if not record then
-    return nil, 'Unknown comment ID'
+    return nil, err
   end
-  if key == '<CR>' then
-    if active.loaded.entries_by_id[record.file_id] then
-      select_file(self, record.file_id, vim.deepcopy(record))
-    end
-  elseif key == 'e' then
-    return self:edit_comment_by_id(id)
-  elseif key == 'd' then
-    return self:delete_comment(id)
-  elseif key == 'r' then
-    local result, err
-    if record.status == 'resolved' then
-      result, err = self:reopen_comment(id)
-    else
-      result, err = self:resolve_comment(id)
-    end
-    return result ~= nil, err
-  elseif key == 'a' then
-    if record.status ~= 'stale' then
-      return nil, 'Only stale comments need attachment'
-    end
-    active.pending_attachment = { id = id }
+  local active = self.state
+  if active.kind == 'active' and active.loaded.entries_by_id[record.file_id] then
+    select_file(self, record.file_id, vim.deepcopy(record))
+  end
+  return true, nil
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+---Text comments must be reopened from a coroutine, like the comparison loader.
+function ReviewSession:toggle_comment_resolution(id)
+  local record, err = actionable_comment(self, id)
+  if not record then
+    return nil, err
+  end
+  local result
+  if record.status == 'resolved' then
+    result, err = self:reopen_comment(id)
   else
-    return nil, 'Unknown comment action'
+    result, err = self:resolve_comment(id)
   end
+  return result ~= nil, err
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+function ReviewSession:begin_comment_attachment(id)
+  local record, err = actionable_comment(self, id)
+  if not record then
+    return nil, err
+  end
+  if record.status ~= 'stale' then
+    return nil, 'Only stale comments need attachment'
+  end
+  local active = self.state
+  if active.kind ~= 'active' then
+    return nil, 'No active review'
+  end
+  active.pending_attachment = { id = id }
   return true, nil
 end
 
@@ -550,7 +582,7 @@ function ReviewSession:mark_selected(viewed)
     return false, 'No selected review file'
   end
   local selected = active.selected_id
-  local ordered = quickfix.ordered_ids(active.loaded.files)
+  local ordered = files_list.ordered_ids(active.loaded.files)
   local saved, err = self:mark_files({ selected }, viewed)
   if not saved then
     return false, err
@@ -625,7 +657,7 @@ function ReviewSession:mark_files(file_ids, viewed)
 end
 
 ---@param session ReviewSession
----@param prepare fun(state: Comments, lines: string[]|nil, views: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
+---@param prepare fun(state: Comments, lines: string[]|nil, view_models: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
 ---@param id string|nil
 ---@param location CommentLocation|nil
 ---@return ReviewComment|boolean|nil, string|nil
@@ -670,7 +702,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
       if selected ~= location.file_id or not active.selected_presented then
         return nil, 'Text comments require the selected review file'
       end
-      local diff, snapshot = diffs.load_selected_view(loaded, location.file_id, active.operation, true)
+      local diff, snapshot = diffs.load_selected_view_model(loaded, location.file_id, active.operation, true)
       if not current() then
         return nil, 'Review changed during comment loading'
       end
@@ -695,7 +727,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     end
   end
   ---@type table<string, DiffViewModel>|nil
-  local views = {}
+  local view_models = {}
   if reopen then
     local record
     for _, item in ipairs(progress.comments) do
@@ -707,14 +739,14 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     if not record then
       return nil, 'Unknown comment ID'
     end
-    local ok, result = pcall(load_comment_views, loaded, { record }, active.operation, current)
+    local ok, result = pcall(load_comment_view_models, loaded, { record }, active.operation, current)
     if not ok or result == nil then
       return nil, 'Unable to verify comment attachment; refresh the review'
     end
-    views = result
+    view_models = result
   end
   local comment_state = active.comments:fork()
-  local result, err = prepare(comment_state, lines, assert(views))
+  local result, err = prepare(comment_state, lines, assert(view_models))
   if result == nil then
     return nil, err
   end
@@ -795,8 +827,8 @@ function ReviewSession:reopen_comment(id)
   if active.kind ~= 'active' then
     return nil, 'No active review'
   end
-  local result, err = mutate_comment(self, function(state, _, views)
-    return state:reopen(id, active.loaded, views)
+  local result, err = mutate_comment(self, function(state, _, view_models)
+    return state:reopen(id, active.loaded, view_models)
   end, id, nil, false, false, true)
   ---@cast result ReviewComment|nil
   return result, err

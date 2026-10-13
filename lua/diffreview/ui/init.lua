@@ -1,4 +1,6 @@
-local quickfix = require('diffreview.ui.quickfix')
+local files_list = require('diffreview.ui.files_list')
+local comments_list = require('diffreview.ui.comments_list')
+local quickfix = require('diffreview.ui.quickfix_helpers')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
@@ -21,10 +23,9 @@ local M = {}
 ---@field presented_id string|nil
 ---@field comments CommentDecorations
 
----@class ReviewUiHandlers
+---@class ReviewUiHandlers: CommentListHandlers
 ---@field on_file_selected fun(file_id: string): nil
 ---@field on_tab_closed fun(): nil
----@field on_comment_action? fun(key: string, id: string): nil
 
 ---@class ReviewUi
 ---@field instance_id integer
@@ -90,7 +91,7 @@ function ReviewUi:show_review_files(files)
   local handlers = assert(self.handlers, 'review UI handlers are unavailable')
   local tab = acquire_tab(self)
   present_in_review_tab(tab, function()
-    quickfix.show_review_files(self.quickfix_id, self.instance_id, files, handlers.on_file_selected, function(id)
+    files_list.show_review_files(self.quickfix_id, self.instance_id, files, handlers.on_file_selected, function(id)
       self.quickfix_id = id
     end)
   end)
@@ -110,7 +111,7 @@ function ReviewUi:mark_context()
   local window = vim.api.nvim_get_current_win()
   if vim.fn.getwininfo(window)[1].quickfix == 1 then
     local row = vim.api.nvim_win_get_cursor(window)[1]
-    local id = quickfix.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
+    local id = files_list.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
     return id and 'quickfix' or nil, id
   end
   return 'diff', nil
@@ -126,7 +127,7 @@ function ReviewUi:comment_context(first, last)
   local window = vim.api.nvim_get_current_win()
   if vim.fn.getwininfo(window)[1].quickfix == 1 then
     local row = vim.api.nvim_win_get_cursor(window)[1]
-    local id = quickfix.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
+    local id = files_list.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
     return id and { file_id = id } or nil
   end
   local id, side = side_by_side.comment_context(self, window)
@@ -165,7 +166,7 @@ end
 ---@param files ChangedFileViewModel[]
 ---@return nil
 function ReviewUi:update_review_files(files)
-  quickfix.update_review_files(self.quickfix_id, self.instance_id, files)
+  files_list.update_review_files(self.quickfix_id, self.instance_id, files)
 end
 
 ---@return boolean
@@ -190,7 +191,7 @@ function ReviewUi:update_review_comments(records, files)
     end
   end
   self.comment_quickfix_id =
-    quickfix.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
+    comments_list.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
   side_by_side.update_comments(self, records)
 end
 
@@ -199,16 +200,12 @@ end
 function ReviewUi:show_review_comments(records)
   local tab = acquire_tab(self)
   present_in_review_tab(tab, function()
-    self.comment_quickfix_id = quickfix.show_review_comments(
+    self.comment_quickfix_id = comments_list.show_review_comments(
       self.comment_quickfix_id,
       self.instance_id,
       tab,
       records,
-      function(key, id)
-        if self.handlers and self.handlers.on_comment_action then
-          self.handlers.on_comment_action(key, id)
-        end
-      end,
+      assert(self.handlers, 'review UI handlers are unavailable'),
       self.comment_paths
     )
   end)
@@ -283,8 +280,8 @@ function ReviewUi:cleanup()
     self.tab_closed_autocmd = nil
   end
   local ok, err = pcall(side_by_side.cleanup, self)
-  quickfix.cleanup(self.quickfix_id, self.instance_id)
-  quickfix.cleanup_comments(self.comment_quickfix_id, self.instance_id)
+  files_list.cleanup(self.quickfix_id, self.instance_id)
+  comments_list.cleanup_comments(self.comment_quickfix_id, self.instance_id)
   self.quickfix_id = nil
   local tab = self.tabpage
   self.tabpage = nil

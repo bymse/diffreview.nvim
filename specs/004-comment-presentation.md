@@ -2,6 +2,8 @@
 
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` replace independent stale/resolved flags with one status enum and derive paths from retained file records. Comment lists no longer display an explicit side; resolved text annotations and navigation are file-level to avoid implying a valid anchor.
 
+Architecture follow-up: file and comment quickfix projections now live in `lua/diffreview/ui/files_list.lua` and `lua/diffreview/ui/comments_list.lua`, with shared native quickfix operations in `lua/diffreview/ui/quickfix_helpers.lua`. Comment mappings invoke named callbacks; the session does not interpret keys.
+
 ## Goal
 
 Make local comments discoverable and manageable with annotations and an independent comment quickfix list that shares the existing bottom drawer.

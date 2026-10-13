@@ -95,3 +95,15 @@ Changed files: comment domain, session, progress and storage modules; comment qu
 Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Results: 50 unit, 203 integration and 87 functional tests, 340 total with zero failures. Captured outputs: `/tmp/opencode/comments-lint.log` and `/tmp/opencode/comments-tests.log`.
 
 Compatibility: checkpoint version 3 replaces version 2 without migration, consistent with the existing no-old-checkpoint assumption. Older checkpoints are rejected, not overwritten or silently converted. Text-comment reopening now requires coroutine context, like text creation and reattachment; native comment-list actions enter coroutine context. No known outstanding failures.
+
+## Comment UI Architecture Review Fixes — 2026-10-13
+
+Status: PASS
+
+User-approved changes: split `ui/quickfix.lua` into `ui/files_list.lua`, `ui/comments_list.lua` and `ui/quickfix_helpers.lua`. Each list retains its own presentation and mapping state; shared native quickfix operations preserve list ownership, inactive updates, drawer selection and cursors.
+
+Input interpretation: comment keys map to named UI callbacks. The session replaces `comment_action(key, id)` with explicit navigation, resolution-toggle and attachment-begin operations, reusing existing edit/delete methods. Dirty/pending editor guards, status decisions, coroutine entry and save-before-adopt remain in session orchestration.
+
+Naming: `load_matching_view_model`, `load_comment_view_models`, their result collections and `diffs.load_selected_view_model` now use explicit view-model terminology. Callers and selected-loader tests were updated. The user's `comments.md` remains untouched.
+
+Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Results: 50 unit, 203 integration and 87 functional tests, 340 total with zero failures. Captured outputs: `/tmp/opencode/list-refactor-lint.log` and `/tmp/opencode/list-refactor-tests.log`.
