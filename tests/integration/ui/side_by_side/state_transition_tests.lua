@@ -242,7 +242,6 @@ M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = f
     'main_snapshot_buffer',
     'companion_snapshot_buffer',
     'information_buffer',
-    'decorated_buffer',
     'active_layout',
   }) do
     assert(state[field] == nil, 'expected cleared ' .. field)

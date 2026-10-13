@@ -4,7 +4,8 @@ local quickfix = require('diffreview.ui.quickfix.helpers')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
-local comment_decorations = require('diffreview.ui.comment_decorations')
+local comment_presentation = require('diffreview.ui.comment_presentation')
+local decoration_tracker = require('diffreview.ui.decoration_tracker')
 local M = {}
 
 ---@class ReviewSideBySideState
@@ -14,14 +15,12 @@ local M = {}
 ---@field main_snapshot_buffer integer|nil
 ---@field companion_snapshot_buffer integer|nil
 ---@field information_buffer integer|nil
----@field decorated_buffer integer|nil
 ---@field active_layout ViewLayout|nil
 ---@field native_diff NativeDiffState
 ---@field main_buffer integer|nil
 ---@field companion_buffer integer|nil
 ---@field main_side 'old'|'current'|nil
 ---@field presented_id string|nil
----@field comments CommentDecorations
 
 ---@class ReviewUiHandlers: CommentListHandlers
 ---@field on_file_selected fun(file_id: string): nil
@@ -31,6 +30,8 @@ local M = {}
 ---@field instance_id integer
 ---@field tabpage integer|nil
 ---@field side_by_side ReviewSideBySideState
+---@field decorations DecorationTracker
+---@field comment_namespace integer
 ---@field quickfix_id quickfix_id|nil
 ---@field comment_quickfix_id quickfix_id|nil
 ---@field comment_paths table<string, string>|nil
@@ -130,7 +131,13 @@ function ReviewUi:comment_context(first, last)
     local id = files_list.row_id(self.quickfix_id, self.instance_id, self.tabpage, row)
     return id and { file_id = id } or nil
   end
-  local id, side = side_by_side.comment_context(self, window)
+  local id, side
+  for _, view in ipairs(self:displayed_views()) do
+    if view.window == window then
+      id, side = view.file_id, view.side
+      break
+    end
+  end
   if id == nil or side == 'old' then
     return nil
   end
@@ -146,7 +153,12 @@ end
 ---@param lines string[]
 ---@return boolean
 function ReviewUi:comment_text_matches(id, side, lines)
-  return side_by_side.text_matches(self, id, side, lines)
+  return comment_presentation.text_matches(self:displayed_views(), id, side, lines)
+end
+
+---@return ReviewDisplayedView[]
+function ReviewUi:displayed_views()
+  return side_by_side.displayed_views(self)
 end
 
 ---@param files ChangedFileViewModel[]
@@ -192,7 +204,7 @@ function ReviewUi:update_review_comments(records, files)
   end
   self.comment_quickfix_id =
     comments_list.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
-  side_by_side.update_comments(self, records)
+  comment_presentation.update(self:displayed_views(), self.decorations, self.comment_namespace, records)
 end
 
 ---@param records ReviewComment[]
@@ -228,13 +240,14 @@ end
 ---@param record ReviewComment
 ---@return boolean
 function ReviewUi:focus_comment(record)
-  return side_by_side.focus_comment(self, record)
+  return comment_presentation.focus(self:displayed_views(), record)
 end
 
 ---@return nil
 function ReviewUi:clear_selected_diff()
   local tab = assert(self.tabpage)
   present_in_review_tab(tab, function()
+    decoration_tracker.clear(self.decorations)
     side_by_side.clear(self)
   end)
 end
@@ -263,6 +276,7 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
       quickfix.close_drawer(self.quickfix_id, self.instance_id, 'files')
       quickfix.close_drawer(self.comment_quickfix_id, self.instance_id, 'comments')
     end
+    decoration_tracker.clear(self.decorations)
     side_by_side.display_side_by_side(self, diff, layout)
     self.side_by_side.presented_id = diff.operation ~= 'error' and file_id or nil
   end)
@@ -279,6 +293,7 @@ function ReviewUi:cleanup()
     vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
     self.tab_closed_autocmd = nil
   end
+  decoration_tracker.clear(self.decorations)
   local ok, err = pcall(side_by_side.cleanup, self)
   files_list.cleanup(self.quickfix_id, self.instance_id)
   comments_list.cleanup_comments(self.comment_quickfix_id, self.instance_id)
@@ -317,15 +332,15 @@ function M.get_ui(handlers)
     tab_acquired = false,
     quickfix_id = nil,
     handlers = handlers,
+    decorations = decoration_tracker.new_state(),
+    comment_namespace = vim.api.nvim_create_namespace('diffreview.comments.' .. next_instance_id),
     side_by_side = {
-      comments = comment_decorations.new_state(next_instance_id),
       namespace = vim.api.nvim_create_namespace('diffreview.side_by_side.' .. next_instance_id),
       main_window = nil,
       companion_window = nil,
       main_snapshot_buffer = nil,
       companion_snapshot_buffer = nil,
       information_buffer = nil,
-      decorated_buffer = nil,
       active_layout = nil,
       native_diff = native_diff.new_state(),
     },

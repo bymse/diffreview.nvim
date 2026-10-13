@@ -3,7 +3,7 @@ local diff_information = require('diffreview.ui.diff_information')
 local native_diff = require('diffreview.ui.native_diff')
 local scratch_buffer = require('diffreview.ui.scratch_buffer')
 local statusline = require('diffreview.ui.statusline')
-local comment_decorations = require('diffreview.ui.comment_decorations')
+local decoration_tracker = require('diffreview.ui.decoration_tracker')
 
 local M = {}
 
@@ -32,12 +32,6 @@ end
 ---@param active_window_lost boolean
 ---@return NativeDiffTransition
 local function clear_previous_presentation(state, instance_id, release_active, active_window_lost)
-  comment_decorations.clear(state.comments)
-  if state.decorated_buffer ~= nil and vim.api.nvim_buf_is_valid(state.decorated_buffer) then
-    decorations.clear(state.decorated_buffer, state.namespace)
-  end
-  state.decorated_buffer = nil
-
   local diff_windows = {}
   for _, window in ipairs({ state.main_window, state.companion_window }) do
     if has_owned_window(state, window, instance_id) then
@@ -203,7 +197,7 @@ function M.display_side_by_side(ui, diff, layout)
     native_diff.enable(state.native_diff, { companion, state.main_window }, native_diff_transition)
   end
   if decorations.set(buffer, state.namespace, diff) then
-    state.decorated_buffer = buffer
+    decoration_tracker.track(ui.decorations, state.namespace, buffer)
   end
   state.active_layout = layout
   state.main_buffer = buffer
@@ -218,7 +212,7 @@ end
 ---@param ui ReviewUi
 ---@param window integer
 ---@return string|nil, 'old'|'current'|nil
-function M.comment_context(ui, window)
+local function displayed_context(ui, window)
   local state = ui.side_by_side
   if not has_owned_window(state, window, ui.instance_id) then
     return nil, nil
@@ -233,21 +227,23 @@ function M.comment_context(ui, window)
 end
 
 ---@param ui ReviewUi
----@param id string
----@param side 'old'|'current'
----@param lines string[]
----@return boolean
-function M.text_matches(ui, id, side, lines)
+---@return ReviewDisplayedView[]
+function M.displayed_views(ui)
   local state = ui.side_by_side
-  local window = side == state.main_side and state.main_window or state.companion_window
-  if window == nil or not vim.api.nvim_win_is_valid(window) then
-    return false
+  local views = {}
+  for _, window in pairs({ state.main_window, state.companion_window }) do
+    local id, side = displayed_context(ui, window)
+    if id then
+      views[#views + 1] = {
+        window = window,
+        buffer = vim.api.nvim_win_get_buf(window),
+        file_id = id,
+        side = side,
+        file_notes = window == state.main_window,
+      }
+    end
   end
-  local presented, actual_side = M.comment_context(ui, window)
-  local expected = #lines == 0 and { '' } or lines
-  return presented == id
-    and actual_side == side
-    and vim.deep_equal(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(window), 0, -1, false), expected)
+  return views
 end
 
 ---@param ui ReviewUi
@@ -276,7 +272,6 @@ function M.cleanup(ui)
 
   state.main_window = nil
   state.companion_window = nil
-  state.decorated_buffer = nil
   state.active_layout = nil
   state.main_buffer = nil
   state.companion_buffer = nil
@@ -308,57 +303,6 @@ function M.clear(ui)
     state.information_buffer = buffer
     state.main_window = main
   end
-end
-
----@param ui ReviewUi
----@param records ReviewComment[]
----@return nil
-function M.update_comments(ui, records)
-  local state = ui.side_by_side
-  comment_decorations.clear(state.comments)
-  for _, window in ipairs({ state.main_window, state.companion_window }) do
-    if has_owned_window(state, window, ui.instance_id) then
-      local id, side = M.comment_context(ui, window)
-      if id then
-        comment_decorations.render(
-          state.comments,
-          vim.api.nvim_win_get_buf(window),
-          records,
-          id,
-          side,
-          window == state.main_window
-        )
-      end
-    end
-  end
-end
-
----@param ui ReviewUi
----@param record ReviewComment
----@return boolean
-function M.focus_comment(ui, record)
-  local state = ui.side_by_side
-  local window = state.main_window
-  if record.start_line and record.status == 'open' then
-    window = state.main_side == 'current' and state.main_window or state.companion_window
-  end
-  if not has_owned_window(state, window, ui.instance_id) then
-    return false
-  end
-  ---@cast window integer
-  local id, side = M.comment_context(ui, window)
-  if id ~= record.file_id or (record.start_line and record.status == 'open' and side ~= 'current') then
-    return false
-  end
-  vim.api.nvim_set_current_win(window)
-  if
-    record.start_line
-    and record.status == 'open'
-    and record.start_line <= vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(window))
-  then
-    vim.api.nvim_win_set_cursor(window, { record.start_line, 0 })
-  end
-  return true
 end
 
 return M

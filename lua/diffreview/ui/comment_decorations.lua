@@ -1,35 +1,13 @@
 local M = {}
 
----@class CommentDecorations
----@field namespace integer
----@field buffers table<integer, boolean>
-
----@param instance_id integer
----@return CommentDecorations
-function M.new_state(instance_id)
-  return { namespace = vim.api.nvim_create_namespace('diffreview.comments.' .. instance_id), buffers = {} }
-end
-
----@param state CommentDecorations
----@return nil
-function M.clear(state)
-  for buffer in pairs(state.buffers) do
-    if vim.api.nvim_buf_is_valid(buffer) then
-      vim.api.nvim_buf_clear_namespace(buffer, state.namespace, 0, -1)
-    end
-  end
-  state.buffers = {}
-end
-
----@param state CommentDecorations
+---@param namespace integer
 ---@param buffer integer
 ---@param records ReviewComment[]
 ---@param file_id string
 ---@param side 'old'|'current'|nil
 ---@param main boolean
 ---@return nil
-function M.render(state, buffer, records, file_id, side, main)
-  state.buffers[buffer] = true
+function M.render(namespace, buffer, records, file_id, side, main)
   local count = vim.api.nvim_buf_line_count(buffer)
   for _, record in ipairs(records) do
     if record.file_id == file_id then
@@ -55,7 +33,7 @@ function M.render(state, buffer, records, file_id, side, main)
           options.hl_group = 'DiagnosticUnderlineInfo'
           options.hl_eol = true
         end
-        vim.api.nvim_buf_set_extmark(buffer, state.namespace, file_note and 0 or first - 1, 0, options)
+        vim.api.nvim_buf_set_extmark(buffer, namespace, file_note and 0 or first - 1, 0, options)
       end
     end
   end

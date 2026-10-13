@@ -137,3 +137,13 @@ User-approved changes: move file/comment quickfix modules and shared helpers und
 Content loading: consolidate submodule snapshot handling with normal supported-side loading instead of duplicating blob/worktree reads. Unsupported content still makes unresolved text comments stale; genuine supported-side read failures still reject the candidate, and worktree snapshots remain fingerprint-validated. Existing submodule reconciliation and read-failure regressions pass. Imports and current spec references use the new paths; the user's `comments.md` remains untouched.
 
 Verification: the `test-runner` agent ran `just lint`, `just format`, `just format-check`, and `just test` in order; all passed. Results: 50 unit, 202 integration, and 98 functional tests, 350 total with zero failures. `git diff --check` passed. Outputs: `/tmp/opencode/review-fixes-lint.log`, `/tmp/opencode/review-fixes-format.log`, `/tmp/opencode/review-fixes-format-check.log`, and `/tmp/opencode/review-fixes-test.log`.
+
+## Shared Comment Presentation and Decoration Lifecycle — 2026-10-13
+
+Status: PASS
+
+User-approved changes: retain the comment editor's read-only virtual-line preview; consolidate diff/comment decoration tracking in a UI-owned tracker with `decorated_buffers` keyed by namespace. Selection changes and cleanup clear tracked review namespaces together; comment updates clear only their namespace. Borrowed buffers and unrelated extmarks remain intact.
+
+Architecture: side-by-side exposes validated displayed views with window, buffer, file identity, text side and file-note destination. Shared `ui/comment_presentation.lua` owns annotation updates, comment focus and full-buffer snapshot comparison. Creation context also consumes displayed views; side-by-side retains layout and resource ownership checks. No inline mode is enabled.
+
+Verification: the `test-runner` agent ran `just lint`, `just format`, `just format-check`, and `just test` in order; all passed. Results: 50 unit, 204 integration and 98 functional tests, 352 total with zero failures. Added regressions cover multiple borrowed buffers and namespaces, unrelated extmark preservation, empty snapshot normalization and rejection of replaced review buffers. `git diff --check` passed. Outputs: `/tmp/opencode/diffreview-lint.log`, `/tmp/opencode/diffreview-format.log`, `/tmp/opencode/diffreview-format-check.log`, and `/tmp/opencode/diffreview-test.log`.
