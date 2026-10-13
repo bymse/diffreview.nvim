@@ -51,7 +51,7 @@ M.mark_files_should_restore_checkpoint_when_content_returns = function()
     local session = review.new({ layout = 'horizontal', view = 'side_by_side' })
     start(session, repo)
     local id = 'stored:file.txt'
-    assert(session.state.progress.version == 3 and #session.state.progress.comments == 0)
+    assert(session.state.progress.version == 4 and #session.state.progress.comments == 0)
     assert(session:mark_files({ id }, true))
     local path = storage.path(session.state.loaded.storage_path, session.state.loaded.identity)
     assert(vim.fn.filereadable(path) == 1 and not path:find(repo.cwd .. '/file.txt', 1, true))

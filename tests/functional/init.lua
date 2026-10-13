@@ -1,4 +1,7 @@
 return {
+  'functional.review_comment_acknowledgement_test',
+  'functional.review_comment_preview_test',
+  'functional.review_comment_unavailable_test',
   'functional.user_commands_test',
   'functional.review_tab_lifecycle_test',
   'functional.review_viewed_test',
@@ -8,8 +11,6 @@ return {
   'functional.review_comment_editor_lifecycle_test',
   'functional.review_comment_editor_by_id_test',
   'functional.review_comments_test',
-  'functional.review_comment_attachment_test',
-  'functional.review_comment_attachment_overlap_test',
   'functional.review_comment_management_safety_test',
   'functional.review_comment_presentation_lifecycle_test',
   'functional.review_selection_added_test',

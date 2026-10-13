@@ -24,7 +24,6 @@ local comment_editor = require('diffreview.ui.comment_editor')
 ---@field options DiffLoadOptions
 ---@field refresh_request AsyncOperation|nil
 ---@field editor CommentEditor|nil
----@field pending_attachment {id: string}|nil
 ---@alias ReviewState { kind: 'idle' }|StartingReview|ActiveReview
 
 local M = {}
@@ -183,7 +182,7 @@ local function load_matching_view_model(loaded, id, operation, current)
 end
 
 ---@param loaded LoadedDiffs
----@param records ReviewComment[]
+---@param records CommentLocation[]
 ---@param operation AsyncOperation
 ---@param current fun(): boolean
 ---@return table<string, DiffViewModel>|nil
@@ -282,7 +281,6 @@ function ReviewSession:start(options)
         on_comment_edit = comment_handler(self.edit_comment_by_id),
         on_comment_delete = comment_handler(self.delete_comment),
         on_comment_toggle_resolution = comment_handler(self.toggle_comment_resolution),
-        on_comment_begin_attachment = comment_handler(self.begin_comment_attachment),
         on_file_selected = function(file_id)
           select_file(self, file_id)
         end,
@@ -353,7 +351,6 @@ function ReviewSession:refresh(preloaded)
     async_operation.cancel(active.refresh_request)
   end
   active.selection_request = nil
-  active.pending_attachment = nil
   local request = async_operation.new()
   active.refresh_request = request
   local function current()
@@ -406,7 +403,6 @@ function ReviewSession:refresh(preloaded)
       active.loaded = loaded
       active.progress = candidate
       active.comments = comments.new(candidate.comments)
-      active.pending_attachment = nil
       active.selected_id = selected ~= nil and loaded.entries_by_id[selected] ~= nil and selected or nil
       if selected ~= nil and diff == nil then
         active.selected_presented = false
@@ -498,56 +494,6 @@ function ReviewSession:toggle_comment_resolution(id)
     result, err = self:resolve_comment(id)
   end
   return result ~= nil, err
-end
-
----@param id string
----@return boolean|nil, string|nil
-function ReviewSession:begin_comment_attachment(id)
-  local record, err = actionable_comment(self, id)
-  if not record then
-    return nil, err
-  end
-  if record.status ~= 'stale' then
-    return nil, 'Only stale comments need attachment'
-  end
-  local active = self.state
-  if active.kind ~= 'active' then
-    return nil, 'No active review'
-  end
-  active.pending_attachment = { id = id }
-  return true, nil
-end
-
----@param first integer|nil
----@param last integer|nil
----@param cancel boolean
----@return boolean|nil, string|nil
-function ReviewSession:attach_comment(first, last, cancel)
-  local active = self.state
-  if active.kind ~= 'active' or (active.editor and active.editor:blocked()) then
-    return nil, 'Save or close the comment editor'
-  end
-  if cancel then
-    active.pending_attachment = nil
-    return true, nil
-  end
-  local source = active.pending_attachment
-  if not source then
-    return nil, 'No pending attachment'
-  end
-  local id = source.id
-  local location = active.ui:comment_context(first, last)
-  if not location then
-    return nil, 'No owned review location'
-  end
-  local running = coroutine.create(function()
-    local result, err = self:reattach_comment(id, location)
-    if not result then
-      vim.notify(err or 'Attachment failed', vim.log.levels.ERROR)
-    end
-  end)
-  local ok, err = coroutine.resume(running)
-  return ok, err
 end
 
 ---@return boolean, string|nil
@@ -661,7 +607,7 @@ end
 ---@param id string|nil
 ---@param location CommentLocation|nil
 ---@return ReviewComment|boolean|nil, string|nil
-local function mutate_comment(session, prepare, id, location, editor_write, invalidate, reopen)
+local function mutate_comment(session, prepare, id, location, editor_write, invalidate, verify_record)
   local active = session.state
   if active.kind ~= 'active' then
     return nil, 'No active review'
@@ -670,7 +616,6 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     return nil, 'Save or close the comment editor'
   end
   local loaded, progress, selected = active.loaded, active.progress, active.selected_id
-  local pending = active.pending_attachment
   local function current()
     return session.state == active
       and not async_operation.is_canceled(active.operation)
@@ -679,7 +624,6 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
       and active.loaded == loaded
       and active.progress == progress
       and active.selected_id == selected
-      and (not invalidate or active.pending_attachment == pending)
       and (editor_write or active.editor == nil or not active.editor:blocked())
       and (active.editor == nil or not active.editor.saving or active.editor:valid())
       and (type(location) ~= 'table' or location.start_line == nil or active.selected_presented)
@@ -728,7 +672,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
   end
   ---@type table<string, DiffViewModel>|nil
   local view_models = {}
-  if reopen then
+  if verify_record then
     local record
     for _, item in ipairs(progress.comments) do
       if item.id == id then
@@ -741,9 +685,22 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     end
     local ok, result = pcall(load_comment_view_models, loaded, { record }, active.operation, current)
     if not ok or result == nil then
-      return nil, 'Unable to verify comment attachment; refresh the review'
+      return nil, 'Unable to verify comment location; refresh the review'
     end
     view_models = result
+    local view = view_models[record.file_id]
+    local version = view and view.current
+    if
+      editor_write
+      and selected == record.file_id
+      and active.selected_presented
+      and version
+      and version.content.kind == 'text'
+      and version.content.source == 'snapshot'
+      and not active.ui:comment_text_matches(record.file_id, 'current', version.content.lines)
+    then
+      return nil, 'Displayed text does not match the comparison'
+    end
   end
   local comment_state = active.comments:fork()
   local result, err = prepare(comment_state, lines, assert(view_models))
@@ -762,9 +719,6 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
   active.progress = candidate
   active.comments = comment_state
   if invalidate and id ~= nil then
-    if active.pending_attachment and active.pending_attachment.id == id then
-      active.pending_attachment = nil
-    end
     if not editor_write and active.editor and active.editor.id == id then
       active.editor:cleanup()
       active.editor = nil
@@ -791,10 +745,22 @@ end
 ---@param id string
 ---@param body string
 ---@return ReviewComment|nil, string|nil
+---Stale text comments must be edited from a coroutine, like the comparison loader.
 function ReviewSession:edit_comment(id, body)
-  local result, err = mutate_comment(self, function(state)
-    return state:edit(id, body)
-  end, id)
+  local active = self.state
+  if active.kind ~= 'active' then
+    return nil, 'No active review'
+  end
+  local stale = false
+  for _, record in ipairs(active.progress.comments) do
+    if record.id == id then
+      stale = record.status == 'stale'
+      break
+    end
+  end
+  local result, err = mutate_comment(self, function(state, _, views)
+    return state:edit(id, body, active.loaded, views)
+  end, id, nil, false, false, stale)
   ---@cast result ReviewComment|nil
   return result, err
 end
@@ -834,19 +800,6 @@ function ReviewSession:reopen_comment(id)
   return result, err
 end
 
----@param id string
----@param location CommentLocation
----@return ReviewComment|nil, string|nil
----Text locations must be called from a coroutine, like the comparison loader.
-function ReviewSession:reattach_comment(id, location)
-  local target = vim.deepcopy(location)
-  local result, err = mutate_comment(self, function(state, lines)
-    return state:reattach(id, target, lines)
-  end, id, target, false, true)
-  ---@cast result ReviewComment|nil
-  return result, err
-end
-
 ---@param session ReviewSession
 ---@param target CommentLocation
 ---@param id string|nil
@@ -871,12 +824,52 @@ local function open_editor(session, target, id, body)
     if editor:blocked() then
       return nil, 'Save or close the current comment editor'
     end
-    if editor:valid() then
-      editor:cleanup()
-    end
   end
   local comparison = active.loaded
-  active.editor = comment_editor.open(assert(active.ui.tabpage), target, id, body, function(draft, text)
+  local progress = active.progress
+  local function current()
+    return session.state == active
+      and active.loaded == comparison
+      and active.progress == progress
+      and active.editor == editor
+      and not async_operation.is_canceled(active.operation)
+      and active.selection_request == nil
+      and active.refresh_request == nil
+      and (editor == nil or not editor:blocked())
+  end
+  local views = {}
+  if id ~= nil then
+    local ok, loaded_views = pcall(load_comment_view_models, comparison, { target }, active.operation, current)
+    if not ok or loaded_views == nil or not current() then
+      return nil, 'Unable to verify comment location; refresh the review'
+    end
+    views = loaded_views
+  end
+  local preview =
+    { target.file_id .. (target.start_line and (':' .. target.start_line .. '-' .. target.end_line) or '') }
+  local view = views[target.file_id]
+  local version = view and view.current
+  local preview_lines
+  if id == nil and target.start_line then
+    preview_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  elseif version and version.content.kind == 'text' and version.content.source == 'snapshot' then
+    preview_lines = version.content.lines
+  end
+  if target.start_line then
+    if preview_lines and target.end_line <= #preview_lines then
+      for line = target.start_line, target.end_line do
+        preview[#preview + 1] = line .. ': ' .. preview_lines[line]
+      end
+    else
+      preview[#preview + 1] = 'Location unavailable; saving will not reopen a stale comment.'
+    end
+  elseif comparison.entries_by_id[target.file_id] == nil then
+    preview[#preview + 1] = 'File unavailable; saving will not reopen a stale comment.'
+  end
+  if editor and editor:valid() then
+    editor:cleanup()
+  end
+  active.editor = comment_editor.open(assert(active.ui.tabpage), target, id, body, preview, function(draft, text)
     if
       session.state ~= active
       or async_operation.is_canceled(active.operation)
@@ -885,7 +878,7 @@ local function open_editor(session, target, id, body)
     then
       return nil, 'Comment editor no longer owns an active review'
     end
-    if draft.id == nil and active.loaded ~= comparison then
+    if (draft.id == nil or draft.target.start_line ~= nil) and active.loaded ~= comparison then
       return nil, 'Comment comparison changed; open a new editor'
     end
     local result, err
@@ -901,11 +894,25 @@ local function open_editor(session, target, id, body)
       end
       return true, nil
     elseif draft.id ~= nil then
-      result, err = mutate_comment(session, function(state)
-        return state:edit(draft.id, text)
-      end, draft.id, nil, true)
+      local stale = false
+      for _, record in ipairs(active.progress.comments) do
+        if record.id == draft.id then
+          stale = record.status == 'stale'
+          break
+        end
+      end
+      result, err = mutate_comment(session, function(state, _, view_models)
+        return state:edit(draft.id, text, active.loaded, view_models)
+      end, draft.id, nil, true, false, stale)
     else
       result, err = mutate_comment(session, function(state, lines)
+        if draft.target.start_line and preview_lines then
+          for line = draft.target.start_line, draft.target.end_line do
+            if lines == nil or lines[line] ~= preview_lines[line] then
+              return nil, 'Comment preview does not match the comparison; open a new editor'
+            end
+          end
+        end
         return state:add(draft.target, text, lines)
       end, nil, draft.target, true)
     end
@@ -939,6 +946,7 @@ end
 
 ---@param id string
 ---@return boolean|nil, string|nil
+---Text comments must be opened from a coroutine, like the comparison loader.
 function ReviewSession:edit_comment_by_id(id)
   local active = self.state
   if active.kind ~= 'active' then

@@ -12,7 +12,7 @@ M.review_comments_should_preserve_checkpoint_when_rows_or_ownership_are_replaced
     local list = vim.fn.getqflist({ id = id, items = 1 })
     list.items[1].user_data.comment_id = 'unknown'
     vim.fn.setqflist({}, 'r', { id = id, items = list.items })
-    for _, key in ipairs({ '<CR>', 'e', 'd', 'r', 'a' }) do
+    for _, key in ipairs({ '<CR>', 'e', 'd', 'r' }) do
       review.keys(key)
     end
     assert(vim.deep_equal(saved(), original))
@@ -21,7 +21,7 @@ M.review_comments_should_preserve_checkpoint_when_rows_or_ownership_are_replaced
     vim.cmd('ReviewComments')
     review.comment_row(1)
     vim.fn.setqflist({}, ' ', { title = 'foreign', context = { plugin = 'foreign' }, items = { { text = 'other' } } })
-    for _, key in ipairs({ '<CR>', 'e', 'd', 'r', 'a' }) do
+    for _, key in ipairs({ '<CR>', 'e', 'd', 'r' }) do
       review.keys(key)
     end
     assert(vim.deep_equal(saved(), original))
@@ -41,12 +41,9 @@ M.review_comments_should_keep_draft_and_invalidate_clean_editor_only_after_succe
     vim.api.nvim_buf_set_lines(editor, 0, -1, false, { 'dirty draft' })
     review.comment_row(1)
     local original = saved()
-    for _, key in ipairs({ 'e', 'd', 'r', 'a' }) do
+    for _, key in ipairs({ 'e', 'd', 'r' }) do
       review.keys(key)
     end
-    pcall(function()
-      vim.cmd('ReviewCommentAttach!')
-    end)
     assert(vim.deep_equal(saved(), original) and vim.bo[editor].modified)
     assert(vim.deep_equal(vim.api.nvim_buf_get_lines(editor, 0, -1, false), { 'dirty draft' }))
     local window = vim.fn.win_findbuf(editor)[1]
@@ -71,7 +68,7 @@ M.review_comments_should_keep_draft_and_invalidate_clean_editor_only_after_succe
   end)
 end
 
-M.review_comments_should_reject_native_keys_and_attachment_when_text_write_is_pending = function()
+M.review_comments_should_reject_native_keys_when_text_write_is_pending = function()
   review.with_comment_review(function(repo, saved)
     local files = vim.fn.getqflist({ id = 0 }).id
     vim.cmd('ReviewComment')
@@ -84,17 +81,24 @@ M.review_comments_should_reject_native_keys_and_attachment_when_text_write_is_pe
     local editor = vim.api.nvim_get_current_buf()
     vim.api.nvim_buf_set_lines(editor, 0, -1, false, { 'pending text' })
     vim.bo[editor].modified = false
-    vim.cmd('write')
-    assert(#saved().comments == 1)
-    pcall(function()
-      vim.cmd('ReviewCommentAttach!')
+    local guarded, guard_error
+    vim.schedule(function()
+      guarded, guard_error = xpcall(function()
+        assert(#saved().comments == 1)
+        vim.cmd('ReviewComments')
+        review.comment_row(1)
+        for _, key in ipairs({ 'd', 'r', 'e', '<CR>' }) do
+          pcall(function()
+            review.keys(key)
+          end)
+        end
+        assert(vim.api.nvim_buf_is_valid(editor))
+      end, debug.traceback)
     end)
-    vim.cmd('ReviewComments')
-    review.comment_row(1)
-    for _, key in ipairs({ 'd', 'r', 'e', 'a', '<CR>' }) do
-      review.keys(key)
-    end
-    assert(vim.api.nvim_buf_is_valid(editor))
+    pcall(function()
+      vim.cmd('write')
+    end)
+    assert(guarded, guard_error)
     assert(vim.wait(2000, function()
       return #saved().comments == 2
     end))

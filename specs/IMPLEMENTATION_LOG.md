@@ -107,3 +107,23 @@ Input interpretation: comment keys map to named UI callbacks. The session replac
 Naming: `load_matching_view_model`, `load_comment_view_models`, their result collections and `diffs.load_selected_view_model` now use explicit view-model terminology. Callers and selected-loader tests were updated. The user's `comments.md` remains untouched.
 
 Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Results: 50 unit, 203 integration and 87 functional tests, 340 total with zero failures. Captured outputs: `/tmp/opencode/list-refactor-lint.log` and `/tmp/opencode/list-refactor-tests.log`.
+
+## Fixed-Range Comment Simplification — 2026-10-13
+
+Status: PASS
+
+User-approved behavior: text comments retain fixed file identities and inclusive line ranges. Selected text is stored as an SHA-256 `anchor_hash`; refresh and restart compare only that range without searching for moved text or requiring unchanged neighbors. Changed or unavailable locations make unresolved comments stale; matching text restores open status. Resolved comments remain resolved.
+
+Acknowledgement: writing a stale comment, including unchanged `:w` or `:wq`, recaptures current text at its retained coordinates and opens it when available. Body and metadata are saved atomically before adoption and presentation updates. Missing identities, absent/non-text current content, or out-of-range bounds preserve stale status and the prior hash while allowing body edits and manual deletion. No range clamping, location conversion, or manual retargeting remains. Genuine read failures and inconsistent comparison snapshots reject the write and preserve the draft/checkpoint.
+
+Removed: `ReviewCommentAttach`, the comment-list `a` mapping, pending-attachment state and cancellation/ownership logic, session/domain reattachment APIs, and the obsolete attachment functional suites. Existing navigation, deletion, resolution toggling, independent quickfix lists, and stale file-level presentation remain.
+
+Editor changes: read-only virtual-line previews show target coordinates and current code separately from the body, or indicate unavailable locations. Text previews are pinned to their comparison; refreshing requires reopening before saving. New text writes also validate the captured range against the original preview so restored unsaved source edits cannot silently capture different code. Writes mark drafts modified until persistence succeeds and wait for asynchronous capture before native `:wq` closes; failed unchanged writes retain an open draft for retry.
+
+Changed areas: comment domain, session orchestration, command registration, editor/comment-list UI, progress/storage schemas, affected integration/functional tests and shared real-editor fixtures. Added focused acknowledgement, preview-validity/lifecycle, and unavailable-location/read-failure functional coverage. `specs/CONTEXT.md` and follow-up headers in specs 001–004 record the superseding contract. The user's `comments.md` was not modified.
+
+Compatibility: checkpoint version 4 replaces version 3 without migration, consistent with the established no-old-checkpoints assumption. Old checkpoints are rejected rather than overwritten or silently converted. By-ID text-editor opening and stale text edits use coroutine-based snapshot loading.
+
+Verification: the `test-runner` agent ran `just lint`, then `just format`, `just format-check`, and `just test`; all passed. Final results: 50 unit, 202 integration, and 98 functional tests, 350 total with zero failures. `git diff --check` passed. Captured outputs: `/tmp/opencode/fixed-comments-lint.log`, `/tmp/opencode/fixed-comments-format.log`, `/tmp/opencode/fixed-comments-format-check.log`, and `/tmp/opencode/fixed-comments-tests.log`.
+
+Quality review: the requested `my-code-quality-judge` instructions were executed by a read-only general reviewer. Initial review blocked a new-preview/snapshot mismatch and missing preview/unavailable-write coverage; both were repaired and independently re-reviewed. Final verdict: PASS, no blockers; compliance 5/5, architecture 4/5, simplicity 5/5, test quality 4/5, regression risk 4/5, maintainability 4/5. Report: `/tmp/opencode/fixed-comments-judge.md`.

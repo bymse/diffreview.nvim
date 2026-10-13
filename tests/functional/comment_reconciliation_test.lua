@@ -17,7 +17,7 @@ local function wait_for_comments(loaded, expected)
   )
 end
 
-M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and_return = function()
+M.review_commands_should_preserve_fixed_comments_when_text_moves_disappears_and_returns = function()
   functional_review.with_review(function(repo)
     repo:write_file('file.txt', base)
     repo:add('file.txt')
@@ -35,9 +35,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
       status = 'open',
       start_line = 2,
       end_line = 3,
-      anchor_lines = { 'anchor', 'range' },
-      context_before = 'before',
-      context_after = 'after',
+      anchor_hash = vim.fn.sha256('anchor\nrange'),
     }
     progress.comments[#progress.comments + 1] = {
       id = 'saved-file-note',
@@ -53,7 +51,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     repo:add('file.txt')
     repo:commit('move baseline')
     repo:write_file('file.txt', moved_current)
-    expected[1].start_line, expected[1].end_line = 3, 4
+    expected[1].status = 'stale'
     vim.cmd('ReviewStart HEAD')
     local list = functional_review.wait_for_list(1)
     wait_for_comments(loaded, expected)
@@ -64,7 +62,6 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
 
     local refreshed = { 'extra', 'prefix', 'before', 'anchor', 'range', 'after', 'changed' }
     repo:write_file('file.txt', refreshed)
-    expected[1].start_line, expected[1].end_line = 4, 5
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     assert(#vim.fn.getqflist({ id = list, items = 1 }).items == 1)
@@ -86,7 +83,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     repo:write_file('file.txt', refreshed)
-    expected[1].status = 'open'
+    expected[1].status = 'stale'
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
 
@@ -114,6 +111,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     for _, record in ipairs(expected) do
       record.status = 'open'
     end
+    expected[1].status = 'stale'
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     assert(vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments')
@@ -143,6 +141,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     for _, record in ipairs(expected) do
       record.status = 'open'
     end
+    expected[1].status = 'stale'
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     assert(vim.fn.getqflist({ id = 0 }).id == list)

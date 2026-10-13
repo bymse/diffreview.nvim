@@ -6,7 +6,6 @@ local M = {}
 ---@field on_comment_edit? fun(id: string): nil
 ---@field on_comment_delete? fun(id: string): nil
 ---@field on_comment_toggle_resolution? fun(id: string): nil
----@field on_comment_begin_attachment? fun(id: string): nil
 
 local comment_rows = {}
 local comment_ticks = {}
@@ -128,7 +127,6 @@ function M.show_review_comments(id, instance_id, tab, records, handlers, paths)
     e = 'on_comment_edit',
     d = 'on_comment_delete',
     r = 'on_comment_toggle_resolution',
-    a = 'on_comment_begin_attachment',
   }
   for key, name in pairs(actions) do
     local callback = function()

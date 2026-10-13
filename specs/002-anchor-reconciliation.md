@@ -1,5 +1,7 @@
 # Spec 002: Refresh and Restart Reconciliation
 
+Fixed-range follow-up: the approved 2026-10-13 simplification in `specs/CONTEXT.md` supersedes unique text/context search below. Refresh/restart check the stored range hash without moving coordinates; missing or changed ranges remain stale until matching text returns or an available location is acknowledged by writing the comment.
+
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's independent resolution/staleness and explicit-side representation. Resolved comments remain resolved; reopening rechecks current attachment eligibility.
 
 Naming follow-up: the selected comparison loader is now `diffs.load_selected_view_model`; session helpers and their result collections also spell out view-model terminology.

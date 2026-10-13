@@ -1,5 +1,7 @@
 # Spec 001: Durable Comment Records
 
+Fixed-range follow-up: the approved 2026-10-13 simplification in `specs/CONTEXT.md` supersedes text/context anchors and reattachment APIs below. Version 4 stores a selected-range hash at fixed coordinates; stale edits acknowledge available current locations, and manual reattachment is removed.
+
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's original side, boolean-status, display-path and version-2 schema details. The stateful `Comments` API and checkpoint version 3 are recorded in `specs/IMPLEMENTATION_LOG.md`.
 
 ## Goal

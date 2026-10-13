@@ -1,5 +1,7 @@
 # Spec 003: Write Comments in the Review UI
 
+Fixed-range follow-up: the approved 2026-10-13 simplification in `specs/CONTEXT.md` makes stale-editor writes acknowledge current text at retained coordinates, including unchanged `:wq`. Editors show read-only target context, pin text previews to their comparison, and wait for persistence before native close-on-write. Unavailable locations remain stale; resolved comments remain resolved.
+
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` remove explicit side fields from comment locations. Old-pane rejection remains at the UI boundary; text anchors use current-file line numbers.
 
 ## Goal

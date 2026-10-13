@@ -92,16 +92,6 @@ function M.setup(options)
       vim.notify(err or 'Review comments unavailable', vim.log.levels.ERROR)
     end
   end, { nargs = 0 })
-  vim.api.nvim_create_user_command('ReviewCommentAttach', function(command)
-    local first, last
-    if command.range > 0 then
-      first, last = command.line1, command.line2
-    end
-    local ok, err = review_session:attach_comment(first, last, command.bang)
-    if not ok then
-      vim.notify(err or 'Attachment unavailable', vim.log.levels.ERROR)
-    end
-  end, { nargs = 0, range = true, bang = true })
   for _, entry in ipairs({ { 'ReviewMarkViewed', true }, { 'ReviewMarkUnviewed', false } }) do
     vim.api.nvim_create_user_command(entry[1], function()
       local ok, err = review_session:mark_selected(entry[2])

@@ -59,7 +59,7 @@ local function checkpoint(session)
   return path, vim.fn.readfile(path)[1]
 end
 
-M.refresh_should_move_unique_ranges_and_preserve_resolution_when_current_text_moves = function()
+M.refresh_should_keep_fixed_ranges_and_preserve_resolution_when_current_text_moves = function()
   with_review(function(session, repo)
     local new = text_note(session)
     assert(session:resolve_comment(new.id))
@@ -72,9 +72,8 @@ M.refresh_should_move_unique_ranges_and_preserve_resolution_when_current_text_mo
     local records = session.state.progress.comments
     assert(#records == 1 and records[1].id == new.id)
     for _, record in ipairs(records) do
-      assert(record.status ~= 'stale' and record.start_line == 3 and record.end_line == 4)
-      assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
-      assert(record.context_before == 'before' and record.context_after == 'after')
+      assert(record.status == 'resolved' and record.start_line == 2 and record.end_line == 3)
+      assert(record.anchor_hash == vim.fn.sha256('anchor\nrange'))
     end
     assert(records[1].status == 'resolved' and not session.state.loaded.files[1].viewed)
     session:stop()
@@ -83,13 +82,13 @@ M.refresh_should_move_unique_ranges_and_preserve_resolution_when_current_text_mo
   end)
 end
 
-M.refresh_should_retain_last_location_and_reattach_stale_ranges_when_exact_context_returns = function()
+M.refresh_should_retain_fixed_location_when_range_changes_or_moves = function()
   with_review(function(session, repo)
     local note = text_note(session)
     for _, lines in ipairs({
       { 'before', 'edited', 'range', 'after', 'changed' },
-      { 'different context', 'anchor', 'range', 'after', 'changed' },
-      { 'before', 'anchor', 'range', 'after', 'before', 'anchor', 'range', 'after' },
+      { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' },
+      { 'before' },
     }) do
       repo:write_file('file.txt', lines)
       refresh(session)
@@ -97,10 +96,10 @@ M.refresh_should_retain_last_location_and_reattach_stale_ranges_when_exact_conte
       stale.status = 'stale'
       assert(vim.deep_equal(session.state.progress.comments[1], stale))
     end
-    repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
+    repo:write_file('file.txt', current)
     refresh(session)
     local attached = session.state.progress.comments[1]
-    assert(attached.id == note.id and attached.status == 'open' and attached.start_line == 3)
+    assert(attached.id == note.id and attached.status == 'open' and attached.start_line == 2)
   end)
 end
 
@@ -121,12 +120,12 @@ M.reopen_comment_should_recheck_anchor_when_resolved_text_changes_or_disappears 
     refresh(session)
     assert(session.state.progress.comments[1].status == 'resolved')
     assert(session:reopen_comment(note.id).status == 'stale')
-    repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
+    repo:write_file('file.txt', current)
     refresh(session)
     assert(session.state.progress.comments[1].status == 'open')
     assert(session:resolve_comment(note.id).status == 'resolved')
     local reopened = assert(session:reopen_comment(note.id))
-    assert(reopened.status == 'open' and reopened.start_line == 3 and reopened.id == note.id)
+    assert(reopened.status == 'open' and reopened.start_line == 2 and reopened.id == note.id)
   end)
 end
 
@@ -158,7 +157,7 @@ M.reopen_comment_should_preserve_resolved_checkpoint_when_comparison_snapshot_ch
   end)
 end
 
-M.start_should_retain_comment_only_reviews_and_reattach_notes_when_file_identity_returns = function()
+M.start_should_retain_comment_only_reviews_and_reconcile_notes_when_file_identity_returns = function()
   with_review(function(session, repo)
     local text = text_note(session)
     local file = assert(session:add_comment({ file_id = id }, 'file note'))
@@ -328,7 +327,7 @@ M.refresh_should_preserve_comments_and_presentation_when_checkpoint_replace_fail
   end)
 end
 
-M.start_should_match_git_snapshot_ranges_when_explicit_target_moves = function()
+M.start_should_stale_fixed_git_snapshot_ranges_when_explicit_target_moves = function()
   with_review(function(session, repo)
     session:stop()
     repo:branch('baseline')
@@ -354,25 +353,27 @@ M.start_should_match_git_snapshot_ranges_when_explicit_target_moves = function()
       return session.state.kind == 'active'
     end))
     local records = session.state.progress.comments
-    assert(#records == 1 and records[1].id == new.id and records[1].start_line == 3 and records[1].status == 'open')
+    assert(#records == 1 and records[1].id == new.id and records[1].start_line == 2 and records[1].status == 'stale')
   end)
 end
 
-M.refresh_should_capture_new_neighbors_when_boundary_anchor_moves = function()
+M.refresh_should_ignore_neighbors_and_duplicate_text_when_fixed_range_matches = function()
   with_review(function(session, repo)
-    local note = assert(session:add_comment({ file_id = id, start_line = 1, end_line = 1 }, 'boundary'))
-    assert(note.context_before == nil)
-    repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
+    local note = text_note(session)
+    repo:write_file('file.txt', { 'different', 'anchor', 'range', 'neighbors', 'anchor', 'range' })
     refresh(session)
     local record = session.state.progress.comments[1]
     assert(
-      record.id == note.id and record.start_line == 2 and record.context_before == 'prefix' and record.status == 'open'
+      record.id == note.id
+        and record.start_line == 2
+        and record.anchor_hash == note.anchor_hash
+        and record.status == 'open'
     )
-    repo:write_file('file.txt', { 'other prefix', 'before', 'anchor', 'range', 'after', 'changed' })
+    repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
     refresh(session)
     assert(
       session.state.progress.comments[1].status == 'stale'
-        and session.state.progress.comments[1].context_before == 'prefix'
+        and session.state.progress.comments[1].anchor_hash == note.anchor_hash
     )
   end)
 end

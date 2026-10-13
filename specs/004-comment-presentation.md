@@ -1,5 +1,7 @@
 # Spec 004: Comment List and Inline Presentation
 
+Fixed-range follow-up: the approved 2026-10-13 simplification in `specs/CONTEXT.md` removes the `a` mapping, `ReviewCommentAttach`, pending-attachment workflow, and reattachment APIs described below. Saving a stale comment acknowledges available current text at its fixed location; stale annotations and navigation remain file-level until then.
+
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` replace independent stale/resolved flags with one status enum and derive paths from retained file records. Comment lists no longer display an explicit side; resolved text annotations and navigation are file-level to avoid implying a valid anchor.
 
 Architecture follow-up: file and comment quickfix projections now live in `lua/diffreview/ui/files_list.lua` and `lua/diffreview/ui/comments_list.lua`, with shared native quickfix operations in `lua/diffreview/ui/quickfix_helpers.lua`. Comment mappings invoke named callbacks; the session does not interpret keys.

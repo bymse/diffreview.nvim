@@ -73,7 +73,7 @@ M.review_comment_should_persist_cursor_ranges_and_file_note_when_written_and_res
     assert(saved.comments[2].start_line == 2 and saved.comments[2].end_line == 2)
     local record = saved.comments[3]
     assert(record.start_line == 2 and record.end_line == 3)
-    assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
+    assert(record.anchor_hash == vim.fn.sha256('anchor\nrange'))
     vim.cmd('ReviewStop')
     vim.cmd('ReviewStart HEAD')
     assert(vim.wait(2000, function()
@@ -166,7 +166,7 @@ M.review_comment_should_reject_deleted_text_and_allow_file_notes_when_deleted_or
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
     assert(#saved.comments == 2)
     assert(saved.comments[1].start_line == nil and saved.comments[1].file_id == 'stored:deleted.txt')
-    assert(saved.comments[1].anchor_lines == nil)
+    assert(saved.comments[1].anchor_hash == nil)
     assert(saved.comments[2].start_line == nil and saved.comments[2].file_id == 'stored:mode.txt')
   end)
 end

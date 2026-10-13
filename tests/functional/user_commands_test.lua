@@ -54,7 +54,6 @@ M.plugin_should_register_commands_when_setup_is_called = function()
     'ReviewMarkUnviewed',
     'ReviewComment',
     'ReviewComments',
-    'ReviewCommentAttach',
   }) do
     assert(vim.fn.exists(':' .. name) == 2, 'expected ' .. name .. ' command')
   end

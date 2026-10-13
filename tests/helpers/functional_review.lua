@@ -274,6 +274,9 @@ end
 ---@param saved fun(): ReviewProgress
 ---@return integer
 function M.write_comment(body, saved)
+  assert(vim.wait(2000, function()
+    return vim.bo.buftype == 'acwrite'
+  end))
   local buffer = vim.api.nvim_get_current_buf()
   assert(vim.bo[buffer].buftype == 'acwrite')
   vim.api.nvim_buf_set_lines(buffer, 0, -1, false, { body })
@@ -302,6 +305,53 @@ function M.comment_row(row)
     end
   end
   error('expected comment drawer')
+end
+
+---@alias SavedReviewProgress fun(): ReviewProgress
+---@param run fun(repo: TestGitRepo, saved: SavedReviewProgress, original: ReviewComment): nil
+---@param change fun(repo: TestGitRepo): nil
+---@return nil
+function M.with_stale_comment_review(run, change)
+  M.with_comment_review(function(repo, saved)
+    local files = vim.fn.getqflist({ id = 0 }).id
+    M.select_path(files, 'file.txt')
+    M.wait_for_two_sided_current(repo, 'file.txt', { 'one', 'anchor', 'three' }, { 'one', 'anchor', 'changed' })
+    vim.cmd('2,3ReviewComment')
+    M.write_comment('range note', saved)
+    M.close_comment_editor()
+    local original = saved().comments[1]
+    change(repo)
+    vim.cmd('ReviewRefresh')
+    assert(vim.wait(2000, function()
+      return saved().comments[1].status == 'stale'
+    end))
+    local list = vim.fn.getqflist({ title = 1, winid = 1 })
+    if list.title ~= 'Diff Review Comments' or list.winid == 0 then
+      vim.cmd('ReviewComments')
+    end
+    M.comment_row(1)
+    M.keys('e')
+    assert(vim.wait(2000, function()
+      return vim.bo.buftype == 'acwrite'
+    end))
+    run(repo, saved, original)
+  end)
+end
+
+---@return string[]
+function M.comment_editor_preview()
+  local lines = {}
+  local namespace = assert(vim.api.nvim_get_namespaces()['diffreview.comment_editor'])
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(0, namespace, 0, -1, { details = true })) do
+    for _, line in ipairs(mark[4].virt_lines or {}) do
+      local text = {}
+      for _, chunk in ipairs(line) do
+        text[#text + 1] = chunk[1]
+      end
+      lines[#lines + 1] = table.concat(text)
+    end
+  end
+  return lines
 end
 
 ---@return nil

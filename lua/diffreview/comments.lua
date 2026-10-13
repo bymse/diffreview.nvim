@@ -4,9 +4,7 @@ local M = {}
 ---@field id string
 ---@field body string
 ---@field status 'open'|'resolved'|'stale'
----@field anchor_lines string[]|nil
----@field context_before string|nil
----@field context_after string|nil
+---@field anchor_hash string|nil
 
 ---@class CommentLocation
 ---@field file_id string
@@ -18,7 +16,7 @@ local M = {}
 local Comments = {}
 Comments.__index = Comments
 
-local anchor_fields = { 'start_line', 'end_line', 'anchor_lines', 'context_before', 'context_after' }
+local anchor_fields = { 'start_line', 'end_line', 'anchor_hash' }
 
 local function nonblank(value)
   return type(value) == 'string' and value:find('%S') ~= nil
@@ -60,6 +58,9 @@ function M.validate(records)
       or rawget(record, 'resolved') ~= nil
       or rawget(record, 'stale') ~= nil
       or rawget(record, 'display_path') ~= nil
+      or rawget(record, 'anchor_lines') ~= nil
+      or rawget(record, 'context_before') ~= nil
+      or rawget(record, 'context_after') ~= nil
     then
       return false, 'Invalid review comment record'
     end
@@ -72,18 +73,11 @@ function M.validate(records)
       end
     else
       if
-        type(record.anchor_lines) ~= 'table'
-        or not vim.islist(record.anchor_lines)
-        or #record.anchor_lines ~= record.end_line - record.start_line + 1
-        or (record.context_before ~= nil and type(record.context_before) ~= 'string')
-        or (record.context_after ~= nil and type(record.context_after) ~= 'string')
+        type(record.anchor_hash) ~= 'string'
+        or #record.anchor_hash ~= 64
+        or record.anchor_hash:match('^%x+$') == nil
       then
         return false, 'Invalid text comment anchor'
-      end
-      for _, line in ipairs(record.anchor_lines) do
-        if type(line) ~= 'string' then
-          return false, 'Invalid text comment line'
-        end
       end
     end
   end
@@ -109,6 +103,24 @@ local function find(self, id)
   end
 end
 
+local function range_hash(record, lines)
+  if lines == nil or record.end_line > #lines then
+    return nil
+  end
+  return vim.fn.sha256(table.concat(lines, '\n', record.start_line, record.end_line))
+end
+
+local function current_hash(record, loaded, views)
+  if loaded.entries_by_id[record.file_id] == nil then
+    return nil
+  end
+  local view = views[record.file_id]
+  local version = view and view.current
+  if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
+    return range_hash(record, version.content.lines)
+  end
+end
+
 local function capture(record, location, lines)
   if not M.valid_location(location) then
     return nil, 'Invalid comment location'
@@ -122,12 +134,7 @@ local function capture(record, location, lines)
   record.file_id = location.file_id
   if location.start_line then
     record.start_line, record.end_line = location.start_line, location.end_line
-    record.anchor_lines = {}
-    for line = location.start_line, location.end_line do
-      record.anchor_lines[#record.anchor_lines + 1] = lines[line]
-    end
-    record.context_before = lines[location.start_line - 1]
-    record.context_after = lines[location.end_line + 1]
+    record.anchor_hash = range_hash(record, lines)
   end
   if record.status ~= 'resolved' then
     record.status = 'open'
@@ -153,8 +160,10 @@ end
 
 ---@param id string
 ---@param body string
+---@param loaded LoadedDiffs|nil
+---@param views table<string, DiffViewModel>|nil
 ---@return ReviewComment|nil, string|nil
-function Comments:edit(id, body)
+function Comments:edit(id, body, loaded, views)
   local record = find(self, id)
   if not record then
     return nil, 'Unknown comment ID'
@@ -163,6 +172,17 @@ function Comments:edit(id, body)
     return nil, 'Comment body must not be blank'
   end
   record.body = body
+  if record.status == 'stale' and loaded then
+    if record.start_line then
+      local hash = current_hash(record, loaded, views or {})
+      if hash then
+        record.anchor_hash = hash
+        record.status = 'open'
+      end
+    elseif loaded.entries_by_id[record.file_id] then
+      record.status = 'open'
+    end
+  end
   return vim.deepcopy(record), nil
 end
 
@@ -189,40 +209,8 @@ function Comments:resolve(id)
 end
 
 local function reconcile_record(record, loaded, views)
-  local entry = loaded.entries_by_id[record.file_id]
-  local attached = entry ~= nil and record.start_line == nil
-  if entry and record.start_line then
-    local view = views[record.file_id]
-    local version = view and view.current
-    if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
-      local lines, anchors = version.content.lines, assert(record.anchor_lines)
-      local match
-      for first = 1, #lines - #anchors + 1 do
-        local last = first + #anchors - 1
-        local exact = (record.context_before == nil or lines[first - 1] == record.context_before)
-          and (record.context_after == nil or lines[last + 1] == record.context_after)
-        for offset, line in ipairs(anchors) do
-          if lines[first + offset - 1] ~= line then
-            exact = false
-            break
-          end
-        end
-        if exact then
-          if match then
-            match = nil
-            break
-          end
-          match = first
-        end
-      end
-      if match then
-        attached = true
-        record.start_line, record.end_line = match, match + #anchors - 1
-        record.context_before = lines[record.start_line - 1]
-        record.context_after = lines[record.end_line + 1]
-      end
-    end
-  end
+  local attached = loaded.entries_by_id[record.file_id] ~= nil
+    and (record.start_line == nil or current_hash(record, loaded, views) == record.anchor_hash)
   if record.status ~= 'resolved' then
     record.status = attached and 'open' or 'stale'
   end
@@ -240,18 +228,6 @@ function Comments:reopen(id, loaded, views)
   record.status = 'open'
   reconcile_record(record, loaded, views)
   return vim.deepcopy(record), nil
-end
-
----@param id string
----@param location CommentLocation
----@param lines string[]|nil
----@return ReviewComment|nil, string|nil
-function Comments:reattach(id, location, lines)
-  local record = find(self, id)
-  if not record then
-    return nil, 'Unknown comment ID'
-  end
-  return capture(record, location, lines)
 end
 
 ---@param loaded LoadedDiffs

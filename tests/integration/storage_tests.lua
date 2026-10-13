@@ -27,7 +27,7 @@ M.load_should_reject_incompatible_identity_and_invalid_checkpoint_without_overwr
       target = 'worktree:current',
     }
     local state = {
-      version = 3,
+      version = 4,
       comments = {},
       identity = identity,
       from_oid = string.rep('a', 40),
@@ -110,7 +110,7 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
     local identity =
       { repository_root = repo.cwd, source = 'branch:main', baseline = 'head:HEAD', target = 'worktree:current' }
     local state = {
-      version = 3,
+      version = 4,
       identity = identity,
       from_oid = string.rep('a', 40),
       files = {},
@@ -123,8 +123,7 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
           status = 'resolved',
           start_line = 1,
           end_line = 2,
-          anchor_lines = { 'a', 'b' },
-          context_after = 'c',
+          anchor_hash = vim.fn.sha256('a\nb'),
         },
       },
     }
@@ -187,16 +186,16 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
         value.comments[2].start_line = 3
       end,
       function(value)
-        value.comments[2].anchor_lines = { 'a' }
+        value.comments[2].anchor_hash = nil
       end,
       function(value)
-        value.comments[2].anchor_lines = { 'a', false }
+        value.comments[2].anchor_hash = false
       end,
       function(value)
-        value.comments[2].context_after = {}
+        value.comments[2].anchor_hash = string.rep('g', 64)
       end,
       function(value)
-        value.comments[2].context_before = false
+        value.comments[2].anchor_hash = 'short'
       end,
     }
     for _, corrupt in ipairs(cases) do
