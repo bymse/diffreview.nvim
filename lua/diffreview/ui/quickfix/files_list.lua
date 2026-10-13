@@ -1,4 +1,4 @@
-local helpers = require('diffreview.ui.quickfix_helpers')
+local helpers = require('diffreview.ui.quickfix.helpers')
 local M = {}
 
 local quickfix_title = 'Diff Review'
@@ -29,7 +29,7 @@ end
 ---@param row integer
 ---@return string|nil
 function M.row_id(id, instance_id, tab, row)
-  local list = helpers.get_active_owned_list(id, instance_id)
+  local list = helpers.get_active_owned_list(id, instance_id, 'files')
   local window = vim.api.nvim_get_current_win()
   local mapping = presented_ids[instance_id]
   if
@@ -133,13 +133,13 @@ end
 ---@param on_list_acquired fun(id: quickfix_id): nil
 ---@return quickfix_id
 function M.show_review_files(id, instance_id, files, on_file_selected, on_list_acquired)
-  if not helpers.is_owned(id, instance_id) then
+  if not helpers.is_owned(id, instance_id, 'files') then
     id = nil
   end
   local action = id == nil and ' ' or 'u'
   local properties = {
     title = quickfix_title,
-    context = helpers.quickfix_context(instance_id),
+    context = helpers.quickfix_context(instance_id, 'files'),
     items = create_quickfix_entries(files),
     quickfixtextfunc = helpers.format_quickfix_entries,
   }
@@ -170,7 +170,7 @@ end
 ---@param files ChangedFileViewModel[]
 ---@return nil
 function M.update_review_files(id, instance_id, files)
-  if not helpers.is_owned(id, instance_id) then
+  if not helpers.is_owned(id, instance_id, 'files') then
     return
   end
   local cursors = helpers.drawer_cursors()
@@ -178,7 +178,7 @@ function M.update_review_files(id, instance_id, files)
     error('failed to update the Diff Review quickfix list')
   end
   presented_ids[instance_id] = M.ordered_ids(files)
-  helpers.restore_cursors(cursors)
+  helpers.restore_drawer_cursors(cursors)
 end
 
 ---@param id quickfix_id|nil
@@ -188,11 +188,11 @@ function M.cleanup(id, instance_id)
   remove_selection_binding(instance_id)
   presented_ids[instance_id] = nil
   local list = helpers.get_quickfix_list(id)
-  if list == nil or list.context ~= helpers.quickfix_context(instance_id) then
+  if list == nil or list.context ~= helpers.quickfix_context(instance_id, 'files') then
     return
   end
   ---@cast id quickfix_id
-  if helpers.get_active_owned_list(id, instance_id) ~= nil then
+  if helpers.get_active_owned_list(id, instance_id, 'files') ~= nil then
     helpers.close_quickfix_windows(list.qfbufnr)
   end
   pcall(vim.fn.setqflist, {}, 'r', { id = id, items = {} })

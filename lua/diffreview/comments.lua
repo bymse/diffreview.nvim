@@ -110,11 +110,11 @@ local function range_hash(record, lines)
   return vim.fn.sha256(table.concat(lines, '\n', record.start_line, record.end_line))
 end
 
-local function current_hash(record, loaded, views)
+local function current_hash(record, loaded, view_models_by_file_id)
   if loaded.entries_by_id[record.file_id] == nil then
     return nil
   end
-  local view = views[record.file_id]
+  local view = view_models_by_file_id[record.file_id]
   local version = view and view.current
   if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
     return range_hash(record, version.content.lines)
@@ -161,9 +161,9 @@ end
 ---@param id string
 ---@param body string
 ---@param loaded LoadedDiffs|nil
----@param views table<string, DiffViewModel>|nil
+---@param view_models_by_file_id table<string, DiffViewModel>|nil
 ---@return ReviewComment|nil, string|nil
-function Comments:edit(id, body, loaded, views)
+function Comments:edit(id, body, loaded, view_models_by_file_id)
   local record = find(self, id)
   if not record then
     return nil, 'Unknown comment ID'
@@ -174,7 +174,7 @@ function Comments:edit(id, body, loaded, views)
   record.body = body
   if record.status == 'stale' and loaded then
     if record.start_line then
-      local hash = current_hash(record, loaded, views or {})
+      local hash = current_hash(record, loaded, view_models_by_file_id or {})
       if hash then
         record.anchor_hash = hash
         record.status = 'open'
@@ -208,9 +208,9 @@ function Comments:resolve(id)
   return vim.deepcopy(record), nil
 end
 
-local function reconcile_record(record, loaded, views)
+local function reconcile_record(record, loaded, view_models_by_file_id)
   local attached = loaded.entries_by_id[record.file_id] ~= nil
-    and (record.start_line == nil or current_hash(record, loaded, views) == record.anchor_hash)
+    and (record.start_line == nil or current_hash(record, loaded, view_models_by_file_id) == record.anchor_hash)
   if record.status ~= 'resolved' then
     record.status = attached and 'open' or 'stale'
   end
@@ -218,24 +218,24 @@ end
 
 ---@param id string
 ---@param loaded LoadedDiffs
----@param views table<string, DiffViewModel>
+---@param view_models_by_file_id table<string, DiffViewModel>
 ---@return ReviewComment|nil, string|nil
-function Comments:reopen(id, loaded, views)
+function Comments:reopen(id, loaded, view_models_by_file_id)
   local record = find(self, id)
   if not record then
     return nil, 'Unknown comment ID'
   end
   record.status = 'open'
-  reconcile_record(record, loaded, views)
+  reconcile_record(record, loaded, view_models_by_file_id)
   return vim.deepcopy(record), nil
 end
 
 ---@param loaded LoadedDiffs
----@param views table<string, DiffViewModel>
+---@param view_models_by_file_id table<string, DiffViewModel>
 ---@return nil
-function Comments:reconcile(loaded, views)
+function Comments:reconcile(loaded, view_models_by_file_id)
   for _, record in ipairs(self.records) do
-    reconcile_record(record, loaded, views)
+    reconcile_record(record, loaded, view_models_by_file_id)
   end
 end
 

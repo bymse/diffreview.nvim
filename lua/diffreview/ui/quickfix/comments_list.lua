@@ -1,4 +1,4 @@
-local helpers = require('diffreview.ui.quickfix_helpers')
+local helpers = require('diffreview.ui.quickfix.helpers')
 local M = {}
 
 ---@class CommentListHandlers
@@ -104,7 +104,7 @@ function M.update_review_comments(id, instance_id, records, paths)
   if previous ~= 0 and helpers.get_quickfix_list(previous) then
     helpers.select_quickfix_list(previous)
   end
-  helpers.restore_cursors(cursors)
+  helpers.restore_drawer_cursors(cursors)
   return id
 end
 

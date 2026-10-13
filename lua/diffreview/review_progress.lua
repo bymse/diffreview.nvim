@@ -26,9 +26,9 @@ local comments = require('diffreview.comments')
 
 ---@param previous ReviewProgress|nil
 ---@param loaded LoadedDiffs
----@param views table<string, DiffViewModel>|nil
+---@param view_models_by_file_id table<string, DiffViewModel>|nil
 ---@return ReviewProgress
-function M.reconcile(previous, loaded, views)
+function M.reconcile(previous, loaded, view_models_by_file_id)
   local records = {}
   local by_id = {}
   if previous then
@@ -51,7 +51,7 @@ function M.reconcile(previous, loaded, views)
     summary.viewed = record.viewed_fingerprint == record.fingerprint
   end
   local comment_state = comments.new(vim.deepcopy(previous and previous.comments or {}))
-  comment_state:reconcile(loaded, views or {})
+  comment_state:reconcile(loaded, view_models_by_file_id or {})
   return {
     version = 4,
     identity = loaded.identity,

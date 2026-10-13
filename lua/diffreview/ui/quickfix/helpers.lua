@@ -3,10 +3,10 @@ local M = {}
 ---@alias quickfix_id integer
 
 ---@param instance_id integer
----@param kind 'files'|'comments'|nil
+---@param kind 'files'|'comments'
 ---@return string
 function M.quickfix_context(instance_id, kind)
-  return 'diffreview:' .. (kind or 'files') .. ':' .. instance_id
+  return 'diffreview:' .. kind .. ':' .. instance_id
 end
 
 ---@param id quickfix_id|nil
@@ -43,7 +43,7 @@ end
 
 ---@param id quickfix_id|nil
 ---@param instance_id integer
----@param kind 'files'|'comments'|nil
+---@param kind 'files'|'comments'
 ---@return boolean
 function M.is_owned(id, instance_id, kind)
   local list = M.get_quickfix_list(id)
@@ -52,7 +52,7 @@ end
 
 ---@param id quickfix_id|nil
 ---@param instance_id integer
----@param kind 'files'|'comments'|nil
+---@param kind 'files'|'comments'
 ---@return table|nil
 function M.get_active_owned_list(id, instance_id, kind)
   if not M.is_owned(id, instance_id, kind) then
@@ -97,7 +97,7 @@ end
 
 ---@param cursors table<integer, integer[]>
 ---@return nil
-function M.restore_cursors(cursors)
+function M.restore_drawer_cursors(cursors)
   for window, cursor in pairs(cursors) do
     if vim.api.nvim_win_is_valid(window) then
       cursor[1] = math.min(cursor[1], vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(window)))
@@ -109,7 +109,7 @@ end
 ---@param id quickfix_id|nil
 ---@param instance_id integer
 ---@param tab integer
----@param kind 'files'|'comments'|nil
+---@param kind 'files'|'comments'
 ---@return boolean
 function M.drawer_open(id, instance_id, tab, kind)
   local list = M.get_active_owned_list(id, instance_id, kind)
@@ -142,7 +142,7 @@ end
 
 ---@param id quickfix_id|nil
 ---@param instance_id integer
----@param kind 'files'|'comments'|nil
+---@param kind 'files'|'comments'
 ---@return nil
 function M.close_drawer(id, instance_id, kind)
   local list = M.get_active_owned_list(id, instance_id, kind)

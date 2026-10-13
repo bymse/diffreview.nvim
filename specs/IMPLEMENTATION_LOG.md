@@ -127,3 +127,13 @@ Compatibility: checkpoint version 4 replaces version 3 without migration, consis
 Verification: the `test-runner` agent ran `just lint`, then `just format`, `just format-check`, and `just test`; all passed. Final results: 50 unit, 202 integration, and 98 functional tests, 350 total with zero failures. `git diff --check` passed. Captured outputs: `/tmp/opencode/fixed-comments-lint.log`, `/tmp/opencode/fixed-comments-format.log`, `/tmp/opencode/fixed-comments-format-check.log`, and `/tmp/opencode/fixed-comments-tests.log`.
 
 Quality review: the requested `my-code-quality-judge` instructions were executed by a read-only general reviewer. Initial review blocked a new-preview/snapshot mismatch and missing preview/unavailable-write coverage; both were repaired and independently re-reviewed. Final verdict: PASS, no blockers; compliance 5/5, architecture 4/5, simplicity 5/5, test quality 4/5, regression risk 4/5, maintainability 4/5. Report: `/tmp/opencode/fixed-comments-judge.md`.
+
+## Quickfix and Content Review Fixes — 2026-10-13
+
+Status: PASS
+
+User-approved changes: move file/comment quickfix modules and shared helpers under `lua/diffreview/ui/quickfix/`; require explicit `files` or `comments` kinds in shared ownership/drawer operations. Retain cursor preservation as `restore_drawer_cursors`, because native list updates and history switching can reset visible drawer positions. Rename comment snapshot collections to `view_models_by_file_id` across progress, domain and session boundaries.
+
+Content loading: consolidate submodule snapshot handling with normal supported-side loading instead of duplicating blob/worktree reads. Unsupported content still makes unresolved text comments stale; genuine supported-side read failures still reject the candidate, and worktree snapshots remain fingerprint-validated. Existing submodule reconciliation and read-failure regressions pass. Imports and current spec references use the new paths; the user's `comments.md` remains untouched.
+
+Verification: the `test-runner` agent ran `just lint`, `just format`, `just format-check`, and `just test` in order; all passed. Results: 50 unit, 202 integration, and 98 functional tests, 350 total with zero failures. `git diff --check` passed. Outputs: `/tmp/opencode/review-fixes-lint.log`, `/tmp/opencode/review-fixes-format.log`, `/tmp/opencode/review-fixes-format-check.log`, and `/tmp/opencode/review-fixes-test.log`.

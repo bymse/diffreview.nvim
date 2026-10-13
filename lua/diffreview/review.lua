@@ -3,7 +3,7 @@ local diffs = require('diffreview.diffs')
 local ui = require('diffreview.ui')
 local storage = require('diffreview.storage')
 local review_progress = require('diffreview.review_progress')
-local files_list = require('diffreview.ui.files_list')
+local files_list = require('diffreview.ui.quickfix.files_list')
 local comments = require('diffreview.comments')
 local comment_editor = require('diffreview.ui.comment_editor')
 
@@ -187,7 +187,7 @@ end
 ---@param current fun(): boolean
 ---@return table<string, DiffViewModel>|nil
 local function load_comment_view_models(loaded, records, operation, current)
-  local view_models, seen = {}, {}
+  local view_models_by_file_id, seen = {}, {}
   for _, record in ipairs(records) do
     local id = record.file_id
     local entry = loaded.entries_by_id[id]
@@ -197,10 +197,10 @@ local function load_comment_view_models(loaded, records, operation, current)
       if diff == nil then
         return nil
       end
-      view_models[id] = diff
+      view_models_by_file_id[id] = diff
     end
   end
-  return view_models
+  return view_models_by_file_id
 end
 
 ---@param options ReviewStartOptions
@@ -238,13 +238,18 @@ function ReviewSession:start(options)
         fail_start(self, operation, review_ui, load_error)
         return
       end
-      local view_models = load_comment_view_models(loaded, previous and previous.comments or {}, operation, function()
-        return is_start_operation_current(self, operation)
-      end)
-      if view_models == nil or not is_start_operation_current(self, operation) then
+      local view_models_by_file_id = load_comment_view_models(
+        loaded,
+        previous and previous.comments or {},
+        operation,
+        function()
+          return is_start_operation_current(self, operation)
+        end
+      )
+      if view_models_by_file_id == nil or not is_start_operation_current(self, operation) then
         return
       end
-      local progress = review_progress.reconcile(previous, loaded, view_models)
+      local progress = review_progress.reconcile(previous, loaded, view_models_by_file_id)
       if
         (#loaded.files > 0 or previous ~= nil)
         and not vim.deep_equal(previous, progress)
@@ -376,15 +381,15 @@ function ReviewSession:refresh(preloaded)
       then
         error('Review identity changed; start a new review')
       end
-      local view_models = load_comment_view_models(loaded, active.progress.comments, request, current)
-      if view_models == nil or not current() then
+      local view_models_by_file_id = load_comment_view_models(loaded, active.progress.comments, request, current)
+      if view_models_by_file_id == nil or not current() then
         return
       end
-      local candidate = review_progress.reconcile(active.progress, loaded, view_models)
+      local candidate = review_progress.reconcile(active.progress, loaded, view_models_by_file_id)
       local selected = active.selected_id
       local diff
       if selected ~= nil and loaded.entries_by_id[selected] ~= nil then
-        diff = view_models[selected] or load_matching_view_model(loaded, selected, request, current)
+        diff = view_models_by_file_id[selected] or load_matching_view_model(loaded, selected, request, current)
         if not current() then
           return
         end
@@ -603,7 +608,7 @@ function ReviewSession:mark_files(file_ids, viewed)
 end
 
 ---@param session ReviewSession
----@param prepare fun(state: Comments, lines: string[]|nil, view_models: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
+---@param prepare fun(state: Comments, lines: string[]|nil, view_models_by_file_id: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
 ---@param id string|nil
 ---@param location CommentLocation|nil
 ---@return ReviewComment|boolean|nil, string|nil
@@ -671,7 +676,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     end
   end
   ---@type table<string, DiffViewModel>|nil
-  local view_models = {}
+  local view_models_by_file_id = {}
   if verify_record then
     local record
     for _, item in ipairs(progress.comments) do
@@ -687,8 +692,8 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     if not ok or result == nil then
       return nil, 'Unable to verify comment location; refresh the review'
     end
-    view_models = result
-    local view = view_models[record.file_id]
+    view_models_by_file_id = result
+    local view = view_models_by_file_id[record.file_id]
     local version = view and view.current
     if
       editor_write
@@ -703,7 +708,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     end
   end
   local comment_state = active.comments:fork()
-  local result, err = prepare(comment_state, lines, assert(view_models))
+  local result, err = prepare(comment_state, lines, assert(view_models_by_file_id))
   if result == nil then
     return nil, err
   end
@@ -758,8 +763,8 @@ function ReviewSession:edit_comment(id, body)
       break
     end
   end
-  local result, err = mutate_comment(self, function(state, _, views)
-    return state:edit(id, body, active.loaded, views)
+  local result, err = mutate_comment(self, function(state, _, view_models_by_file_id)
+    return state:edit(id, body, active.loaded, view_models_by_file_id)
   end, id, nil, false, false, stale)
   ---@cast result ReviewComment|nil
   return result, err
@@ -793,8 +798,8 @@ function ReviewSession:reopen_comment(id)
   if active.kind ~= 'active' then
     return nil, 'No active review'
   end
-  local result, err = mutate_comment(self, function(state, _, view_models)
-    return state:reopen(id, active.loaded, view_models)
+  local result, err = mutate_comment(self, function(state, _, view_models_by_file_id)
+    return state:reopen(id, active.loaded, view_models_by_file_id)
   end, id, nil, false, false, true)
   ---@cast result ReviewComment|nil
   return result, err
@@ -837,17 +842,18 @@ local function open_editor(session, target, id, body)
       and active.refresh_request == nil
       and (editor == nil or not editor:blocked())
   end
-  local views = {}
+  local view_models_by_file_id = {}
   if id ~= nil then
-    local ok, loaded_views = pcall(load_comment_view_models, comparison, { target }, active.operation, current)
-    if not ok or loaded_views == nil or not current() then
+    local ok, loaded_view_models_by_file_id =
+      pcall(load_comment_view_models, comparison, { target }, active.operation, current)
+    if not ok or loaded_view_models_by_file_id == nil or not current() then
       return nil, 'Unable to verify comment location; refresh the review'
     end
-    views = loaded_views
+    view_models_by_file_id = loaded_view_models_by_file_id
   end
   local preview =
     { target.file_id .. (target.start_line and (':' .. target.start_line .. '-' .. target.end_line) or '') }
-  local view = views[target.file_id]
+  local view = view_models_by_file_id[target.file_id]
   local version = view and view.current
   local preview_lines
   if id == nil and target.start_line then
@@ -901,8 +907,8 @@ local function open_editor(session, target, id, body)
           break
         end
       end
-      result, err = mutate_comment(session, function(state, _, view_models)
-        return state:edit(draft.id, text, active.loaded, view_models)
+      result, err = mutate_comment(session, function(state, _, view_models_by_file_id)
+        return state:edit(draft.id, text, active.loaded, view_models_by_file_id)
       end, draft.id, nil, true, false, stale)
     else
       result, err = mutate_comment(session, function(state, lines)

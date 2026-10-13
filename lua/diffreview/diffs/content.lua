@@ -228,32 +228,6 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
   local operation_name = get_operation(entry)
   local display_path = entry.summary.display_path
   local diff = entry.git_diff
-  if snapshot_worktree and diff and (diff.old_mode == '160000' or diff.new_mode == '160000') then
-    -- Unsupported sides must not hide read failures on the supported side.
-    if operation_name ~= 'added' and operation_name ~= 'unmerged' and diff.old_mode ~= '160000' then
-      local old, _, read_error =
-        load_blob(repo, entry, diff.old_path or diff.current_path, diff.old_mode, diff.old_oid, operation)
-      if old == nil then
-        return read_error and error_view(operation_name, display_path, read_error) or nil
-      end
-    end
-    local snapshot
-    if operation_name ~= 'deleted' and diff.new_mode ~= '160000' then
-      local current, bytes, read_error, mode
-      if target_is_worktree then
-        current, bytes, read_error, mode = load_worktree(entry, diff.current_path, diff.new_mode, operation, true)
-      else
-        current, bytes, read_error = load_blob(repo, entry, diff.current_path, diff.new_mode, diff.new_oid, operation)
-      end
-      if current == nil then
-        return read_error and error_view(operation_name, display_path, read_error) or nil
-      end
-      snapshot = mode and { bytes = assert(bytes), mode = mode } or nil
-    end
-    return error_view(operation_name, display_path, 'Submodule content is outside the supported review scope'),
-      snapshot,
-      true
-  end
   if diff == nil then
     local current, bytes, read_error, mode =
       load_worktree(entry, assert(entry.untracked_path), nil, operation, snapshot_worktree)
@@ -263,8 +237,10 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
     return { operation = 'untracked', current = current }, { bytes = assert(bytes), mode = assert(mode) }
   end
 
+  local nontext = snapshot_worktree and (diff.old_mode == '160000' or diff.new_mode == '160000')
   local old, old_bytes
-  if operation_name ~= 'added' and operation_name ~= 'unmerged' then
+  -- Skip unsupported sides, but still reject read failures on supported sides.
+  if operation_name ~= 'added' and operation_name ~= 'unmerged' and not (nontext and diff.old_mode == '160000') then
     local read_error
     old, old_bytes, read_error =
       load_blob(repo, entry, diff.old_path or diff.current_path, diff.old_mode, diff.old_oid, operation)
@@ -273,11 +249,20 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
     end
   end
   if operation_name == 'deleted' then
+    if nontext then
+      return error_view(operation_name, display_path, 'Submodule content is outside the supported review scope'),
+        nil,
+        true
+    end
     return { operation = operation_name, old = assert(old) }
   end
 
   local current, current_bytes, read_error, worktree_mode
-  if target_is_worktree then
+  if nontext and diff.new_mode == '160000' then
+    return error_view(operation_name, display_path, 'Submodule content is outside the supported review scope'),
+      nil,
+      true
+  elseif target_is_worktree then
     current, current_bytes, read_error, worktree_mode =
       load_worktree(entry, diff.current_path, diff.new_mode, operation, snapshot_worktree)
   else
@@ -288,6 +273,11 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
     return read_error and error_view(operation_name, display_path, read_error) or nil
   end
   local snapshot = worktree_mode and { bytes = assert(current_bytes), mode = worktree_mode } or nil
+  if nontext then
+    return error_view(operation_name, display_path, 'Submodule content is outside the supported review scope'),
+      snapshot,
+      true
+  end
   if operation_name == 'added' or operation_name == 'unmerged' then
     return { operation = operation_name, current = current }, snapshot
   end

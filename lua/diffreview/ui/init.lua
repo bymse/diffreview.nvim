@@ -1,6 +1,6 @@
-local files_list = require('diffreview.ui.files_list')
-local comments_list = require('diffreview.ui.comments_list')
-local quickfix = require('diffreview.ui.quickfix_helpers')
+local files_list = require('diffreview.ui.quickfix.files_list')
+local comments_list = require('diffreview.ui.quickfix.comments_list')
+local quickfix = require('diffreview.ui.quickfix.helpers')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
@@ -155,8 +155,8 @@ function ReviewUi:toggle_review_files(files)
   if not in_review_tab(self) then
     return false
   end
-  if quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage) then
-    quickfix.close_drawer(self.quickfix_id, self.instance_id)
+  if quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage, 'files') then
+    quickfix.close_drawer(self.quickfix_id, self.instance_id, 'files')
   else
     self:show_review_files(files)
   end
@@ -171,7 +171,7 @@ end
 
 ---@return boolean
 function ReviewUi:files_open()
-  return self.tabpage ~= nil and quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage)
+  return self.tabpage ~= nil and quickfix.drawer_open(self.quickfix_id, self.instance_id, self.tabpage, 'files')
 end
 
 ---@return boolean
@@ -260,7 +260,7 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
   local tab = acquire_tab(self)
   present_in_review_tab(tab, function()
     if not keep_drawer then
-      quickfix.close_drawer(self.quickfix_id, self.instance_id)
+      quickfix.close_drawer(self.quickfix_id, self.instance_id, 'files')
       quickfix.close_drawer(self.comment_quickfix_id, self.instance_id, 'comments')
     end
     side_by_side.display_side_by_side(self, diff, layout)
