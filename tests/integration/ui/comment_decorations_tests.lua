@@ -14,29 +14,23 @@ M.render_should_keep_stale_text_at_file_level_and_clear_only_comments_when_reuse
     {
       id = 'valid',
       file_id = 'file',
-      display_path = 'file',
       body = 'range',
-      side = 'current',
       start_line = 2,
       end_line = 3,
-      stale = false,
-      resolved = true,
+      status = 'open',
     },
     {
       id = 'stale',
       file_id = 'file',
-      display_path = 'file',
       body = 'lost',
-      side = 'current',
       start_line = 3,
       end_line = 3,
-      stale = true,
-      resolved = false,
+      status = 'stale',
     },
   }, 'file', 'current', true)
   local marks = vim.api.nvim_buf_get_extmarks(buffer, state.namespace, 0, -1, { details = true })
   assert(#marks == 2 and marks[1][2] == 0 and marks[2][2] == 1)
-  assert(marks[1][4].virt_text[1][1]:find('stale') and marks[2][4].virt_text[1][1]:find('resolved'))
+  assert(marks[1][4].virt_text[1][1]:find('stale') and marks[2][4].virt_text[1][1]:find('open'))
   assert(marks[2][4].end_row == 3)
   decorations.clear(state)
   assert(#vim.api.nvim_buf_get_extmarks(buffer, state.namespace, 0, -1, {}) == 0)
@@ -57,7 +51,7 @@ M.update_review_comments_should_clear_prior_buffers_and_preserve_diff_marks_when
   local diff_marks = vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {})
   assert(#diff_marks > 0)
   view:update_review_comments({
-    { id = 'note', file_id = 'first', display_path = 'first.txt', body = 'note', resolved = false, stale = false },
+    { id = 'note', file_id = 'first', body = 'note', status = 'open' },
   })
   local namespace = view.side_by_side.comments.namespace
   assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 1)

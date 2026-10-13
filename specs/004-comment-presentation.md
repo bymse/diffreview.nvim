@@ -1,5 +1,7 @@
 # Spec 004: Comment List and Inline Presentation
 
+Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` replace independent stale/resolved flags with one status enum and derive paths from retained file records. Comment lists no longer display an explicit side; resolved text annotations and navigation are file-level to avoid implying a valid anchor.
+
 ## Goal
 
 Make local comments discoverable and manageable with annotations and an independent comment quickfix list that shares the existing bottom drawer.

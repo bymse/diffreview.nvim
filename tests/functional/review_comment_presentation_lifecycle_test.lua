@@ -31,10 +31,14 @@ M.review_comments_should_follow_writes_refresh_and_tab_cleanup_without_editing_c
     review.comment_row(1)
     review.keys('r')
     assert(annotations(buffer)[1][4].virt_text[1][1]:find('resolved'))
+    review.keys('r')
+    assert(vim.wait(2000, function()
+      return saved().comments[1].status == 'open'
+    end))
     repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
     vim.cmd('ReviewRefresh')
     assert(vim.wait(2000, function()
-      return saved().comments[1].stale
+      return saved().comments[1].status == 'stale'
     end))
     assert(vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments')
     local previous = buffer
@@ -60,9 +64,10 @@ M.review_comments_should_open_from_closed_drawer_when_refresh_and_restart_have_o
     repo:write_file('file.txt', { 'one', 'anchor', 'three' })
     vim.cmd('ReviewRefresh')
     assert(vim.wait(2000, function()
-      return vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments' and saved().comments[1].stale
+      return vim.fn.getqflist({ title = 1 }).title == 'Diff Review Comments' and saved().comments[1].status == 'stale'
     end))
     local notes = review.comment_row(1)
+    assert(vim.fn.getqflist({ items = 1 }).items[1].text:find('file.txt', 1, true))
     review.keys('<CR>')
     assert(vim.bo.buftype == 'quickfix')
     review.keys('e')

@@ -33,20 +33,26 @@ function M.render(state, buffer, records, file_id, side, main)
   local count = vim.api.nvim_buf_line_count(buffer)
   for _, record in ipairs(records) do
     if record.file_id == file_id then
-      local file_note = record.side == nil or record.stale
+      local file_note = record.start_line == nil or record.status ~= 'open'
       local first, last = record.start_line, record.end_line
-      if (file_note and main) or (not file_note and record.side == side and first and last and last <= count) then
+      if (file_note and main) or (not file_note and side == 'current' and first and last and last <= count) then
         local text = ('[%s%s] %s'):format(
-          record.stale and 'stale file note; ' or '',
-          record.resolved and 'resolved' or 'open',
+          record.status == 'stale' and 'stale file note; ' or '',
+          record.status,
           record.body:gsub('\n', ' ')
         )
         local options = {
-          virt_text = { { text, record.stale and 'WarningMsg' or (record.resolved and 'Comment' or 'DiagnosticInfo') } },
+          virt_text = {
+            {
+              text,
+              record.status == 'stale' and 'WarningMsg'
+                or (record.status == 'resolved' and 'Comment' or 'DiagnosticInfo'),
+            },
+          },
         }
         if not file_note then
           options.end_row = last
-          options.hl_group = record.resolved and 'Comment' or 'DiagnosticUnderlineInfo'
+          options.hl_group = 'DiagnosticUnderlineInfo'
           options.hl_eol = true
         end
         vim.api.nvim_buf_set_extmark(buffer, state.namespace, file_note and 0 or first - 1, 0, options)

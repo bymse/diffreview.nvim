@@ -31,11 +31,8 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     progress.comments[1] = {
       id = 'current-saved-note',
       file_id = 'stored:file.txt',
-      display_path = 'file.txt',
       body = 'current saved body',
-      resolved = true,
-      stale = false,
-      side = 'current',
+      status = 'open',
       start_line = 2,
       end_line = 3,
       anchor_lines = { 'anchor', 'range' },
@@ -45,10 +42,8 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     progress.comments[#progress.comments + 1] = {
       id = 'saved-file-note',
       file_id = 'stored:file.txt',
-      display_path = 'file.txt',
       body = 'saved file body',
-      resolved = true,
-      stale = false,
+      status = 'open',
     }
     assert(storage.save(loaded.storage_path, progress))
     local expected = vim.deepcopy(progress.comments)
@@ -87,11 +82,11 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
 
     repo:write_file('file.txt', { 'extra', 'prefix', 'before', 'edited', 'range', 'after', 'changed' })
-    expected[1].stale = true
+    expected[1].status = 'stale'
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
     repo:write_file('file.txt', refreshed)
-    expected[1].stale = false
+    expected[1].status = 'open'
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
 
@@ -100,7 +95,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
     repo:write_file('file.txt', moved_base)
     for _, record in ipairs(expected) do
-      record.stale = true
+      record.status = 'stale'
     end
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
@@ -117,7 +112,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     end
     repo:write_file('file.txt', refreshed)
     for _, record in ipairs(expected) do
-      record.stale = false
+      record.status = 'open'
     end
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)
@@ -129,7 +124,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
     assert(not vim.api.nvim_tabpage_is_valid(review_tab))
     repo:write_file('file.txt', moved_base)
     for _, record in ipairs(expected) do
-      record.stale = true
+      record.status = 'stale'
     end
     vim.cmd('ReviewStart HEAD')
     assert(
@@ -146,7 +141,7 @@ M.review_commands_should_preserve_saved_comments_when_anchors_move_disappear_and
 
     repo:write_file('file.txt', refreshed)
     for _, record in ipairs(expected) do
-      record.stale = false
+      record.status = 'open'
     end
     vim.cmd('ReviewRefresh')
     wait_for_comments(loaded, expected)

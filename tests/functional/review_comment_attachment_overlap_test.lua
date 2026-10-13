@@ -28,7 +28,7 @@ M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is
       repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
       vim.cmd('ReviewRefresh')
       assert(vim.wait(2000, function()
-        return saved().comments[1].stale
+        return saved().comments[1].status == 'stale'
       end))
       local original = saved()
       vim.cmd('ReviewComments')
@@ -61,13 +61,13 @@ M.review_comment_attach_should_reject_obsolete_completion_when_pending_source_is
       vim.api.nvim_set_current_win(main)
       vim.cmd('3ReviewCommentAttach')
       assert(vim.wait(2000, function()
-        return not saved().comments[1].stale
+        return saved().comments[1].status == 'open'
       end))
       local record = saved().comments[1]
       assert(record.id == original.comments[1].id and record.body == original.comments[1].body)
-      assert(record.resolved == original.comments[1].resolved)
-      assert(record.side == 'current' and record.start_line == 3 and record.end_line == 3)
-      assert(vim.fn.getqflist({ id = notes, items = 1 }).items[1].text:find('current:3%-3'))
+      assert(record.status == 'open')
+      assert(record.start_line == 3 and record.end_line == 3)
+      assert(vim.fn.getqflist({ id = notes, items = 1 }).items[1].text:find('3%-3'))
       assert(not vim.deep_equal(annotations(panes), marks))
       assert(vim.fn.getqflist({ id = 0 }).id == notes)
     end)

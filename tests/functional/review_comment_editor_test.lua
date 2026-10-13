@@ -69,12 +69,10 @@ M.review_comment_should_persist_cursor_ranges_and_file_note_when_written_and_res
     end
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
     assert(#saved.comments == 3)
-    assert(saved.comments[1].side == nil)
-    assert(
-      saved.comments[2].side == 'current' and saved.comments[2].start_line == 2 and saved.comments[2].end_line == 2
-    )
+    assert(saved.comments[1].start_line == nil)
+    assert(saved.comments[2].start_line == 2 and saved.comments[2].end_line == 2)
     local record = saved.comments[3]
-    assert(record.side == 'current' and record.start_line == 2 and record.end_line == 3)
+    assert(record.start_line == 2 and record.end_line == 3)
     assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
     vim.cmd('ReviewStop')
     vim.cmd('ReviewStart HEAD')
@@ -167,9 +165,9 @@ M.review_comment_should_reject_deleted_text_and_allow_file_notes_when_deleted_or
     write('mode note')
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
     assert(#saved.comments == 2)
-    assert(saved.comments[1].side == nil and saved.comments[1].file_id == 'stored:deleted.txt')
+    assert(saved.comments[1].start_line == nil and saved.comments[1].file_id == 'stored:deleted.txt')
     assert(saved.comments[1].anchor_lines == nil)
-    assert(saved.comments[2].side == nil and saved.comments[2].file_id == 'stored:mode.txt')
+    assert(saved.comments[2].start_line == nil and saved.comments[2].file_id == 'stored:mode.txt')
   end)
 end
 

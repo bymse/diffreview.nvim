@@ -339,21 +339,21 @@ end
 function M.focus_comment(ui, record)
   local state = ui.side_by_side
   local window = state.main_window
-  if record.side and not record.stale then
-    window = record.side == state.main_side and state.main_window or state.companion_window
+  if record.start_line and record.status == 'open' then
+    window = state.main_side == 'current' and state.main_window or state.companion_window
   end
   if not has_owned_window(state, window, ui.instance_id) then
     return false
   end
   ---@cast window integer
   local id, side = M.comment_context(ui, window)
-  if id ~= record.file_id or (record.side and not record.stale and side ~= record.side) then
+  if id ~= record.file_id or (record.start_line and record.status == 'open' and side ~= 'current') then
     return false
   end
   vim.api.nvim_set_current_win(window)
   if
-    record.side
-    and not record.stale
+    record.start_line
+    and record.status == 'open'
     and record.start_line <= vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(window))
   then
     vim.api.nvim_win_set_cursor(window, { record.start_line, 0 })

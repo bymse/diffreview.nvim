@@ -223,7 +223,7 @@ M.review_comment_should_keep_location_and_guard_pending_save_when_selection_chan
     assert(vim.deep_equal(vim.api.nvim_buf_get_lines(displayed, 0, -1, false), { 'changed' }))
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
     assert(
-      #saved.comments == 1 and saved.comments[1].file_id == 'stored:file.txt' and saved.comments[1].side == 'current'
+      #saved.comments == 1 and saved.comments[1].file_id == 'stored:file.txt' and saved.comments[1].start_line ~= nil
     )
     assert(saved.comments[1].body == 'pinned')
     assert(vim.deep_equal(saved.files, original.files), 'pending refresh must not adopt changed worktree fingerprints')
@@ -371,7 +371,7 @@ M.review_comment_should_reject_creation_when_owned_quickfix_rows_are_stale_or_re
     vim.cmd('ReviewComment')
     save('restored row')
     local records = saved_comments(loaded)
-    assert(#records == 1 and records[1].file_id == 'stored:file.txt' and records[1].side == nil)
+    assert(#records == 1 and records[1].file_id == 'stored:file.txt' and records[1].start_line == nil)
   end)
 end
 

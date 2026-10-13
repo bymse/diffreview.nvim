@@ -367,17 +367,17 @@ function M.cleanup(id, instance_id)
 end
 
 ---@param records ReviewComment[]
+---@param paths table<string, string>|nil
 ---@return vim.quickfix.entry[]
-local function comment_entries(records)
+local function comment_entries(records, paths)
   local entries = {}
   for _, record in ipairs(records) do
-    local location = record.side and ('%s:%d-%d'):format(record.side, record.start_line, record.end_line) or 'file'
+    local location = record.start_line and ('%d-%d'):format(record.start_line, record.end_line) or 'file'
     entries[#entries + 1] = {
       valid = 1,
-      text = ('[%s] [%s] %s %s — %s'):format(
-        record.stale and 'stale' or 'attached',
-        record.resolved and 'resolved' or 'open',
-        record.display_path,
+      text = ('[%s] %s %s — %s'):format(
+        record.status,
+        paths and paths[record.file_id] or record.file_id,
         location,
         record.body:gsub('\n', ' ')
       ),
@@ -432,8 +432,9 @@ end
 ---@param id quickfix_id|nil
 ---@param instance_id integer
 ---@param records ReviewComment[]
+---@param paths table<string, string>|nil
 ---@return quickfix_id
-function M.update_review_comments(id, instance_id, records)
+function M.update_review_comments(id, instance_id, records, paths)
   local cursors = drawer_cursors()
   local previous = vim.fn.getqflist({ id = 0 }).id
   if not is_owned(id, instance_id, 'comments') then
@@ -442,7 +443,7 @@ function M.update_review_comments(id, instance_id, records)
   local properties = {
     title = 'Diff Review Comments',
     context = quickfix_context(instance_id, 'comments'),
-    items = comment_entries(records),
+    items = comment_entries(records, paths),
     quickfixtextfunc = format_quickfix_entries,
   }
   if id then
@@ -467,9 +468,10 @@ end
 ---@param tab integer
 ---@param records ReviewComment[]
 ---@param action fun(key: string, id: string): nil
+---@param paths table<string, string>|nil
 ---@return quickfix_id
-function M.show_review_comments(id, instance_id, tab, records, action)
-  id = M.update_review_comments(id, instance_id, records)
+function M.show_review_comments(id, instance_id, tab, records, action, paths)
+  id = M.update_review_comments(id, instance_id, records, paths)
   select_quickfix_list(id)
   vim.cmd('botright copen')
   local buffer = assert(get_quickfix_list(id)).qfbufnr

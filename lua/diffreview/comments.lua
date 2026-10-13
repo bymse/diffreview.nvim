@@ -2,36 +2,28 @@ local M = {}
 
 ---@class ReviewComment: CommentLocation
 ---@field id string
----@field file_id string
----@field display_path string
 ---@field body string
----@field resolved boolean
----@field stale boolean
----@field side 'current'|nil
----@field start_line integer|nil
----@field end_line integer|nil
+---@field status 'open'|'resolved'|'stale'
 ---@field anchor_lines string[]|nil
 ---@field context_before string|nil
 ---@field context_after string|nil
 
 ---@class CommentLocation
 ---@field file_id string
----@field side 'current'|nil
 ---@field start_line integer|nil
 ---@field end_line integer|nil
 
----@alias CommentAction 'add'|'edit'|'delete'|'resolve'|'reopen'|'reattach'
+---@class Comments
+---@field records ReviewComment[]
+local Comments = {}
+Comments.__index = Comments
 
-local location_fields = { 'side', 'start_line', 'end_line', 'anchor_lines', 'context_before', 'context_after' }
+local anchor_fields = { 'start_line', 'end_line', 'anchor_lines', 'context_before', 'context_after' }
 
----@param value any
----@return boolean
 local function nonblank(value)
   return type(value) == 'string' and value:find('%S') ~= nil
 end
 
----@param value any
----@return boolean
 local function positive_integer(value)
   return type(value) == 'number' and value > 0 and value < math.huge and value % 1 == 0
 end
@@ -39,14 +31,13 @@ end
 ---@param location CommentLocation
 ---@return boolean
 function M.valid_location(location)
-  if type(location) ~= 'table' or not nonblank(location.file_id) then
+  if type(location) ~= 'table' or not nonblank(location.file_id) or rawget(location, 'side') ~= nil then
     return false
   end
-  if location.side == nil then
-    return location.start_line == nil and location.end_line == nil
+  if location.start_line == nil then
+    return location.end_line == nil
   end
-  return location.side == 'current'
-    and positive_integer(location.start_line)
+  return positive_integer(location.start_line)
     and positive_integer(location.end_line)
     and location.start_line <= location.end_line
 end
@@ -64,16 +55,17 @@ function M.validate(records)
       or not nonblank(record.id)
       or seen[record.id]
       or not M.valid_location(record)
-      or type(record.display_path) ~= 'string'
       or not nonblank(record.body)
-      or type(record.resolved) ~= 'boolean'
-      or type(record.stale) ~= 'boolean'
+      or (record.status ~= 'open' and record.status ~= 'resolved' and record.status ~= 'stale')
+      or rawget(record, 'resolved') ~= nil
+      or rawget(record, 'stale') ~= nil
+      or rawget(record, 'display_path') ~= nil
     then
       return false, 'Invalid review comment record'
     end
     seen[record.id] = true
-    if record.side == nil then
-      for _, field in ipairs(location_fields) do
+    if record.start_line == nil then
+      for _, field in ipairs(anchor_fields) do
         if record[field] ~= nil then
           return false, 'Invalid file comment anchor'
         end
@@ -99,121 +91,176 @@ function M.validate(records)
 end
 
 ---@param records ReviewComment[]
----@param action CommentAction
----@param id string|nil
----@param body string|nil
----@param location CommentLocation|nil
----@param display_path string|nil
----@param lines string[]|nil
----@return ReviewComment[]|nil, ReviewComment|boolean|nil, string|nil
-function M.apply(records, action, id, body, location, display_path, lines)
-  local candidate = vim.deepcopy(records)
-  local record, index
-  for position, item in ipairs(candidate) do
-    if item.id == id then
-      record, index = item, position
-      break
-    end
-  end
-  if action ~= 'add' and record == nil then
-    return nil, nil, 'Unknown comment ID'
-  end
-  if (action == 'add' or action == 'edit') and not nonblank(body) then
-    return nil, nil, 'Comment body must not be blank'
-  end
-  if action == 'add' then
-    record = {
-      id = vim.fn.sha256(vim.fn.tempname() .. tostring(vim.uv.hrtime())),
-      body = assert(body),
-      resolved = false,
-      stale = false,
-    }
-    candidate[#candidate + 1] = record
-  end
-  if action == 'add' or action == 'reattach' then
-    if location == nil or not M.valid_location(location) or display_path == nil then
-      return nil, nil, 'Invalid comment location'
-    end
-    record = assert(record)
-    for _, field in ipairs(location_fields) do
-      record[field] = nil
-    end
-    record.file_id, record.display_path = location.file_id, display_path
-    record.stale = false
-    if location.side ~= nil then
-      if lines == nil or assert(location.end_line) > #lines then
-        return nil, nil, 'Comment line range is outside comparison text'
-      end
-      record.side, record.start_line, record.end_line = location.side, location.start_line, location.end_line
-      record.anchor_lines = {}
-      for line = assert(location.start_line), assert(location.end_line) do
-        record.anchor_lines[#record.anchor_lines + 1] = lines[line]
-      end
-      record.context_before = lines[location.start_line - 1]
-      record.context_after = lines[location.end_line + 1]
-    end
-  elseif action == 'edit' then
-    assert(record).body = assert(body)
-  elseif action == 'delete' then
-    table.remove(candidate, assert(index))
-  elseif action == 'resolve' or action == 'reopen' then
-    assert(record).resolved = action == 'resolve'
-  end
-  local valid, err = M.validate(candidate)
-  if not valid then
-    return nil, nil, err
-  end
-  return candidate, action == 'delete' and true or vim.deepcopy(record), nil
+---@return Comments
+function M.new(records)
+  return setmetatable({ records = records }, Comments)
 end
 
----@param records ReviewComment[]
----@param loaded LoadedDiffs
----@param views table<string, DiffViewModel>
----@return ReviewComment[]
-function M.reconcile(records, loaded, views)
-  local candidate = vim.deepcopy(records)
-  for _, record in ipairs(candidate) do
-    local entry = loaded.entries_by_id[record.file_id]
-    record.stale = true
-    if entry ~= nil and record.side == nil then
-      record.display_path = entry.summary.display_path
-      record.stale = false
-    elseif entry ~= nil then
-      local view = views[record.file_id]
-      local version = view and view[record.side]
-      if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
-        local lines = version.content.lines
-        local anchors = assert(record.anchor_lines)
-        local match
-        for first = 1, #lines - #anchors + 1 do
-          local last = first + #anchors - 1
-          local exact = (record.context_before == nil or lines[first - 1] == record.context_before)
-            and (record.context_after == nil or lines[last + 1] == record.context_after)
-          for offset, line in ipairs(anchors) do
-            if lines[first + offset - 1] ~= line then
-              exact = false
-              break
-            end
-          end
-          if exact then
-            if match ~= nil then
-              match = nil
-              break
-            end
-            match = first
+---@return Comments
+function Comments:fork()
+  return M.new(vim.deepcopy(self.records))
+end
+
+local function find(self, id)
+  for index, record in ipairs(self.records) do
+    if record.id == id then
+      return record, index
+    end
+  end
+end
+
+local function capture(record, location, lines)
+  if not M.valid_location(location) then
+    return nil, 'Invalid comment location'
+  end
+  if location.start_line and (lines == nil or location.end_line > #lines) then
+    return nil, 'Comment line range is outside comparison text'
+  end
+  for _, field in ipairs(anchor_fields) do
+    record[field] = nil
+  end
+  record.file_id = location.file_id
+  if location.start_line then
+    record.start_line, record.end_line = location.start_line, location.end_line
+    record.anchor_lines = {}
+    for line = location.start_line, location.end_line do
+      record.anchor_lines[#record.anchor_lines + 1] = lines[line]
+    end
+    record.context_before = lines[location.start_line - 1]
+    record.context_after = lines[location.end_line + 1]
+  end
+  if record.status ~= 'resolved' then
+    record.status = 'open'
+  end
+  return vim.deepcopy(record), nil
+end
+
+---@param location CommentLocation
+---@param body string
+---@param lines string[]|nil
+---@return ReviewComment|nil, string|nil
+function Comments:add(location, body, lines)
+  if not nonblank(body) then
+    return nil, 'Comment body must not be blank'
+  end
+  local record = { id = vim.fn.sha256(vim.fn.tempname() .. tostring(vim.uv.hrtime())), body = body, status = 'open' }
+  local result, err = capture(record, location, lines)
+  if result then
+    self.records[#self.records + 1] = record
+  end
+  return result, err
+end
+
+---@param id string
+---@param body string
+---@return ReviewComment|nil, string|nil
+function Comments:edit(id, body)
+  local record = find(self, id)
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  if not nonblank(body) then
+    return nil, 'Comment body must not be blank'
+  end
+  record.body = body
+  return vim.deepcopy(record), nil
+end
+
+---@param id string
+---@return boolean|nil, string|nil
+function Comments:delete(id)
+  local record, index = find(self, id)
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  table.remove(self.records, index)
+  return true, nil
+end
+
+---@param id string
+---@return ReviewComment|nil, string|nil
+function Comments:resolve(id)
+  local record = find(self, id)
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  record.status = 'resolved'
+  return vim.deepcopy(record), nil
+end
+
+local function reconcile_record(record, loaded, views)
+  local entry = loaded.entries_by_id[record.file_id]
+  local attached = entry ~= nil and record.start_line == nil
+  if entry and record.start_line then
+    local view = views[record.file_id]
+    local version = view and view.current
+    if version and version.content.kind == 'text' and version.content.source == 'snapshot' then
+      local lines, anchors = version.content.lines, assert(record.anchor_lines)
+      local match
+      for first = 1, #lines - #anchors + 1 do
+        local last = first + #anchors - 1
+        local exact = (record.context_before == nil or lines[first - 1] == record.context_before)
+          and (record.context_after == nil or lines[last + 1] == record.context_after)
+        for offset, line in ipairs(anchors) do
+          if lines[first + offset - 1] ~= line then
+            exact = false
+            break
           end
         end
-        if match ~= nil then
-          record.start_line, record.end_line = match, match + #anchors - 1
-          record.context_before = lines[record.start_line - 1]
-          record.context_after = lines[record.end_line + 1]
-          record.display_path = entry.summary.display_path
-          record.stale = false
+        if exact then
+          if match then
+            match = nil
+            break
+          end
+          match = first
         end
+      end
+      if match then
+        attached = true
+        record.start_line, record.end_line = match, match + #anchors - 1
+        record.context_before = lines[record.start_line - 1]
+        record.context_after = lines[record.end_line + 1]
       end
     end
   end
-  return candidate
+  if record.status ~= 'resolved' then
+    record.status = attached and 'open' or 'stale'
+  end
+end
+
+---@param id string
+---@param loaded LoadedDiffs
+---@param views table<string, DiffViewModel>
+---@return ReviewComment|nil, string|nil
+function Comments:reopen(id, loaded, views)
+  local record = find(self, id)
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  record.status = 'open'
+  reconcile_record(record, loaded, views)
+  return vim.deepcopy(record), nil
+end
+
+---@param id string
+---@param location CommentLocation
+---@param lines string[]|nil
+---@return ReviewComment|nil, string|nil
+function Comments:reattach(id, location, lines)
+  local record = find(self, id)
+  if not record then
+    return nil, 'Unknown comment ID'
+  end
+  return capture(record, location, lines)
+end
+
+---@param loaded LoadedDiffs
+---@param views table<string, DiffViewModel>
+---@return nil
+function Comments:reconcile(loaded, views)
+  for _, record in ipairs(self.records) do
+    reconcile_record(record, loaded, views)
+  end
 end
 
 return M

@@ -1,5 +1,7 @@
 # Spec 003: Write Comments in the Review UI
 
+Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` remove explicit side fields from comment locations. Old-pane rejection remains at the UI boundary; text anchors use current-file line numbers.
+
 ## Goal
 
 Give reviewers `ReviewComment` and a temporary editable buffer that commits local comments only on explicit write.

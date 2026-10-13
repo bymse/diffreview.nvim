@@ -13,11 +13,10 @@ M.review_comment_attach_should_preserve_identity_and_retry_when_stale_source_is_
     repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
     vim.cmd('ReviewRefresh')
     assert(vim.wait(2000, function()
-      return saved().comments[1].stale
+      return saved().comments[1].status == 'stale'
     end))
     vim.cmd('ReviewComments')
     review.comment_row(1)
-    review.keys('r')
     review.keys('a')
     vim.cmd('ReviewCommentAttach!')
     vim.cmd('ReviewFiles')
@@ -25,7 +24,7 @@ M.review_comment_attach_should_preserve_identity_and_retry_when_stale_source_is_
     pcall(function()
       vim.cmd('ReviewCommentAttach')
     end)
-    assert(saved().comments[1].stale)
+    assert(saved().comments[1].status == 'stale')
     vim.cmd('ReviewComments')
     review.comment_row(1)
     review.keys('a')
@@ -51,16 +50,16 @@ M.review_comment_attach_should_preserve_identity_and_retry_when_stale_source_is_
       vim.cmd('ReviewCommentAttach')
     end)
     vim.wait(100)
-    assert(saved().comments[1].stale)
+    assert(saved().comments[1].status == 'stale')
     vim.api.nvim_buf_set_lines(buffer, 0, 1, false, { 'one' })
     vim.bo[buffer].modified = false
     vim.cmd('1,2ReviewCommentAttach')
     assert(vim.wait(2000, function()
-      return not saved().comments[1].stale
+      return saved().comments[1].status ~= 'stale'
     end))
     local record = saved().comments[1]
-    assert(record.id == id and record.body == 'reattach me' and record.resolved)
-    assert(record.side == 'current' and record.start_line == 1 and record.end_line == 2)
+    assert(record.id == id and record.body == 'reattach me' and record.status == 'open')
+    assert(record.start_line == 1 and record.end_line == 2)
   end)
 end
 
@@ -77,7 +76,7 @@ M.review_comment_attach_should_replace_cancel_and_invalidate_pinned_editor_when_
     repo:write_file('file.txt', { 'one', 'replacement', 'changed' })
     vim.cmd('ReviewRefresh')
     assert(vim.wait(2000, function()
-      return saved().comments[1].stale
+      return saved().comments[1].status == 'stale'
     end))
     vim.cmd('ReviewComments')
     review.comment_row(1)
@@ -94,7 +93,11 @@ M.review_comment_attach_should_replace_cancel_and_invalidate_pinned_editor_when_
       end
     end
     vim.cmd('ReviewCommentAttach')
-    assert(saved().comments[1].stale and not saved().comments[2].stale and saved().comments[2].side == nil)
+    assert(
+      saved().comments[1].status == 'stale'
+        and saved().comments[2].status == 'open'
+        and saved().comments[2].start_line == nil
+    )
     assert(not vim.api.nvim_buf_is_valid(editor))
     vim.cmd('ReviewComments')
     review.comment_row(1)
@@ -108,7 +111,7 @@ M.review_comment_attach_should_replace_cancel_and_invalidate_pinned_editor_when_
     pcall(function()
       vim.cmd('ReviewCommentAttach')
     end)
-    assert(saved().comments[1].stale)
+    assert(saved().comments[1].status == 'stale')
     vim.cmd('ReviewComments')
     review.comment_row(1)
     review.keys('a')

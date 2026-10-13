@@ -79,3 +79,19 @@ Submodule decision: retain the `160000` fingerprint branch. `load_diffs` fingerp
 Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Final results: 50 unit, 200 integration and 87 functional tests, 337 total with zero failures. During verification, the current-side annotation assertion was corrected to distinguish a range annotation from the file-note annotation now sharing the current buffer.
 
 Follow-up risks: no known outstanding failures. Existing old-side comment records are invalid under the corrected schema contract; no automatic conversion or silent reassignment was introduced. The user's `comments.md` review input was preserved.
+
+## Comment Model Review Fixes — 2026-10-13
+
+Status: PASS
+
+User-approved decisions: remove explicit side fields from comment records and locations; use current-file line ranges, with old-pane rejection retained at the UI boundary. Replace resolved/stale booleans with `status: 'open'|'resolved'|'stale'`; resolved comments remain resolved regardless of attachment availability. Reopening checks the current anchor or file identity and returns open or stale. Reattachment preserves resolved status and otherwise returns open.
+
+Architecture: `lua/diffreview/comments.lua` now exposes a per-review `Comments` instance with explicit add, edit, delete, resolve, reopen, reattach and reconcile methods instead of an action-string dispatcher. Session operations fork comment state, save the complete candidate checkpoint, and only then adopt the instance and update projections. Active comments and their checkpoint projection share the adopted records; failed loading, validation or persistence leaves both unchanged. Text reopening uses asynchronous, fingerprint-validated snapshots and the existing session-currency guards.
+
+Paths and presentation: comments no longer duplicate `display_path`; the UI derives readable current or last-known paths from retained file-progress records, falling back to file ID when no retained file record exists. Lists show one status and side-free locations. Resolved text comments use file-level annotations and navigation rather than suggesting an attachment that may no longer be valid. Stale unresolved comments retain their last-known anchors and recover through unique exact text/context matching.
+
+Changed files: comment domain, session, progress and storage modules; comment quickfix, decoration, navigation and UI boundaries; affected integration and functional fixtures/assertions; `specs/CONTEXT.md` and supersession notes in specs 001–004. Added integration regressions for reopening resolved text after edits, disappearance, restart and anchor recovery; reopening missing file notes; and rejecting changed comparison snapshots without altering resolved state. Functional coverage checks last-known browsing paths in comment-only reviews. The user's existing annotation cleanup in `comments.lua` and `comments.md` review input were preserved.
+
+Verification: `just lint`, then `just format`, `just format-check`, `just test`, and `git diff --check` passed. Results: 50 unit, 203 integration and 87 functional tests, 340 total with zero failures. Captured outputs: `/tmp/opencode/comments-lint.log` and `/tmp/opencode/comments-tests.log`.
+
+Compatibility: checkpoint version 3 replaces version 2 without migration, consistent with the existing no-old-checkpoint assumption. Older checkpoints are rejected, not overwritten or silently converted. Text-comment reopening now requires coroutine context, like text creation and reattachment; native comment-list actions enter coroutine context. No known outstanding failures.

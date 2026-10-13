@@ -1,5 +1,7 @@
 # Spec 002: Refresh and Restart Reconciliation
 
+Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's independent resolution/staleness and explicit-side representation. Resolved comments remain resolved; reopening rechecks current attachment eligibility.
+
 ## Goal
 
 Preserve comments through review refresh and restart, keeping uniquely matching text locations attached and retaining uncertain or absent locations as stale.

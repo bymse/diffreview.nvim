@@ -27,7 +27,7 @@ M.load_should_reject_incompatible_identity_and_invalid_checkpoint_without_overwr
       target = 'worktree:current',
     }
     local state = {
-      version = 2,
+      version = 3,
       comments = {},
       identity = identity,
       from_oid = string.rep('a', 40),
@@ -110,20 +110,17 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
     local identity =
       { repository_root = repo.cwd, source = 'branch:main', baseline = 'head:HEAD', target = 'worktree:current' }
     local state = {
-      version = 2,
+      version = 3,
       identity = identity,
       from_oid = string.rep('a', 40),
       files = {},
       comments = {
-        { id = 'one', file_id = 'stored:f', display_path = 'f', body = 'note', resolved = false, stale = false },
+        { id = 'one', file_id = 'stored:f', body = 'note', status = 'open' },
         {
           id = 'two',
           file_id = 'stored:f',
-          display_path = 'f',
           body = 'text',
-          resolved = true,
-          stale = true,
-          side = 'current',
+          status = 'resolved',
           start_line = 1,
           end_line = 2,
           anchor_lines = { 'a', 'b' },
@@ -163,7 +160,7 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
         value.comments[1].resolved = 1
       end,
       function(value)
-        value.comments[1].stale = nil
+        value.comments[1].status = nil
       end,
       function(value)
         value.comments[1].context_before = 'bad'

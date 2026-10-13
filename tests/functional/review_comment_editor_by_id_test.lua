@@ -20,26 +20,20 @@ local function with_records(run)
       {
         id = 'first',
         file_id = 'stored:file.txt',
-        display_path = 'file.txt',
         body = 'first',
-        resolved = false,
-        stale = false,
+        status = 'open',
       },
       {
         id = 'second',
         file_id = 'stored:file.txt',
-        display_path = 'file.txt',
         body = 'second',
-        resolved = false,
-        stale = false,
+        status = 'open',
       },
       {
         id = 'stale',
         file_id = 'stored:missing.txt',
-        display_path = 'missing.txt',
         body = 'stale note',
-        resolved = true,
-        stale = true,
+        status = 'stale',
       },
     }
     assert(storage.save(loaded.storage_path, progress))
@@ -101,7 +95,7 @@ M.edit_comment_by_id_should_accept_stale_record_without_navigation_and_reject_ob
     save('stale edited')
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
     assert(saved.comments[3].id == 'stale' and saved.comments[3].body == 'stale edited')
-    assert(saved.comments[3].stale and saved.comments[3].resolved)
+    assert(saved.comments[3].status == 'stale')
     session:stop()
     local buffers = vim.api.nvim_list_bufs()
     assert(not session:edit_comment_by_id('stale'))

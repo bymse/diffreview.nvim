@@ -50,7 +50,7 @@ local function with_review(run)
 end
 
 local function text_note(session)
-  return assert(session:add_comment({ file_id = id, side = 'current', start_line = 2, end_line = 3 }, 'text note'))
+  return assert(session:add_comment({ file_id = id, start_line = 2, end_line = 3 }, 'text note'))
 end
 
 local function checkpoint(session)
@@ -72,11 +72,11 @@ M.refresh_should_move_unique_ranges_and_preserve_resolution_when_current_text_mo
     local records = session.state.progress.comments
     assert(#records == 1 and records[1].id == new.id)
     for _, record in ipairs(records) do
-      assert(not record.stale and record.start_line == 3 and record.end_line == 4)
+      assert(record.status ~= 'stale' and record.start_line == 3 and record.end_line == 4)
       assert(vim.deep_equal(record.anchor_lines, { 'anchor', 'range' }))
       assert(record.context_before == 'before' and record.context_after == 'after')
     end
-    assert(records[1].resolved and not session.state.loaded.files[1].viewed)
+    assert(records[1].status == 'resolved' and not session.state.loaded.files[1].viewed)
     session:stop()
     start(session, repo)
     assert(vim.deep_equal(session.state.progress.comments, records))
@@ -86,7 +86,6 @@ end
 M.refresh_should_retain_last_location_and_reattach_stale_ranges_when_exact_context_returns = function()
   with_review(function(session, repo)
     local note = text_note(session)
-    assert(session:resolve_comment(note.id))
     for _, lines in ipairs({
       { 'before', 'edited', 'range', 'after', 'changed' },
       { 'different context', 'anchor', 'range', 'after', 'changed' },
@@ -95,13 +94,67 @@ M.refresh_should_retain_last_location_and_reattach_stale_ranges_when_exact_conte
       repo:write_file('file.txt', lines)
       refresh(session)
       local stale = vim.deepcopy(note)
-      stale.stale, stale.resolved = true, true
+      stale.status = 'stale'
       assert(vim.deep_equal(session.state.progress.comments[1], stale))
     end
     repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
     refresh(session)
     local attached = session.state.progress.comments[1]
-    assert(attached.id == note.id and attached.resolved and not attached.stale and attached.start_line == 3)
+    assert(attached.id == note.id and attached.status == 'open' and attached.start_line == 3)
+  end)
+end
+
+M.reopen_comment_should_recheck_anchor_when_resolved_text_changes_or_disappears = function()
+  with_review(function(session, repo)
+    local note = text_note(session)
+    assert(session:resolve_comment(note.id).status == 'resolved')
+    repo:write_file('file.txt', { 'before', 'replacement', 'range', 'after', 'changed' })
+    refresh(session)
+    assert(session.state.progress.comments[1].status == 'resolved')
+    session:stop()
+    start(session, repo)
+    assert(session.state.progress.comments[1].status == 'resolved')
+    select(session, 'new:other.txt')
+    assert(session:reopen_comment(note.id).status == 'stale')
+    assert(session:resolve_comment(note.id).status == 'resolved')
+    repo:write_file('file.txt', base)
+    refresh(session)
+    assert(session.state.progress.comments[1].status == 'resolved')
+    assert(session:reopen_comment(note.id).status == 'stale')
+    repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
+    refresh(session)
+    assert(session.state.progress.comments[1].status == 'open')
+    assert(session:resolve_comment(note.id).status == 'resolved')
+    local reopened = assert(session:reopen_comment(note.id))
+    assert(reopened.status == 'open' and reopened.start_line == 3 and reopened.id == note.id)
+  end)
+end
+
+M.reopen_comment_should_recheck_identity_when_resolved_file_note_disappears = function()
+  with_review(function(session, repo)
+    local note = assert(session:add_comment({ file_id = 'new:other.txt' }, 'file note'))
+    assert(session:resolve_comment(note.id).status == 'resolved')
+    assert(vim.fn.delete(repo.cwd .. '/other.txt') == 0)
+    refresh(session)
+    assert(session.state.progress.comments[1].status == 'resolved')
+    assert(session:reopen_comment(note.id).status == 'stale')
+    repo:write_file('other.txt', { 'returned' })
+    refresh(session)
+    assert(session.state.progress.comments[1].status == 'open')
+  end)
+end
+
+M.reopen_comment_should_preserve_resolved_checkpoint_when_comparison_snapshot_changed = function()
+  with_review(function(session, repo)
+    local note = text_note(session)
+    assert(session:resolve_comment(note.id))
+    local path, raw = checkpoint(session)
+    repo:write_file('file.txt', { 'changed outside the comparison' })
+    local result, err = session:reopen_comment(note.id)
+    assert(result == nil and err ~= nil)
+    assert(vim.fn.readfile(path)[1] == raw)
+    assert(session.state.progress.comments[1].status == 'resolved')
+    assert(session:edit_comment(note.id, 'still editable').status == 'resolved')
   end)
 end
 
@@ -114,19 +167,21 @@ M.start_should_retain_comment_only_reviews_and_reattach_notes_when_file_identity
     assert(vim.fn.delete(repo.cwd .. '/other.txt') == 0)
     refresh(session)
     assert(#session.state.loaded.files == 0)
-    assert(session.state.progress.comments[1].stale and session.state.progress.comments[2].stale)
+    assert(
+      session.state.progress.comments[1].status == 'stale' and session.state.progress.comments[2].status == 'resolved'
+    )
     session:stop()
     start(session, repo)
     assert(#session.state.loaded.files == 0 and #session.state.progress.comments == 2)
     repo:write_file('file.txt', current)
     refresh(session)
     local records = session.state.progress.comments
-    assert(records[1].id == text.id and not records[1].stale)
-    assert(records[2].id == file.id and not records[2].stale and records[2].resolved)
+    assert(records[1].id == text.id and records[1].status == 'open')
+    assert(records[2].id == file.id and records[2].status == 'resolved')
     repo:run_git({ 'mv', 'file.txt', 'renamed.txt' })
     refresh(session)
-    assert(session.state.progress.comments[2].display_path == 'renamed.txt')
-    assert(not session.state.progress.comments[2].stale)
+    assert(session.state.progress.files[1].display_path == 'renamed.txt')
+    assert(session.state.progress.comments[2].status == 'resolved')
   end)
 end
 
@@ -169,14 +224,14 @@ M.refresh_should_stale_text_but_keep_file_notes_when_side_vanishes_or_becomes_bi
     local file = assert(session:add_comment({ file_id = id }, 'file note'))
     assert(vim.fn.delete(repo.cwd .. '/file.txt') == 0)
     refresh(session)
-    assert(session.state.progress.comments[1].stale)
-    assert(not session.state.progress.comments[2].stale)
+    assert(session.state.progress.comments[1].status == 'stale')
+    assert(session.state.progress.comments[2].status == 'open')
     local descriptor = assert(vim.uv.fs_open(repo.cwd .. '/file.txt', 'w', 420))
     assert(vim.uv.fs_write(descriptor, 'a\0b', 0) == 3)
     assert(vim.uv.fs_close(descriptor))
     refresh(session)
-    assert(session.state.progress.comments[1].id == note.id and session.state.progress.comments[1].stale)
-    assert(session.state.progress.comments[2].id == file.id and not session.state.progress.comments[2].stale)
+    assert(session.state.progress.comments[1].id == note.id and session.state.progress.comments[1].status == 'stale')
+    assert(session.state.progress.comments[2].id == file.id and session.state.progress.comments[2].status == 'open')
   end)
 end
 
@@ -203,7 +258,7 @@ M.refresh_should_stale_text_and_keep_file_notes_when_text_becomes_submodule = fu
     repo:run_git({ 'update-index', '--add', '--cacheinfo', '160000,' .. oid .. ',file.txt' })
     refresh(session)
     assert(session.state.loaded.entries_by_id[id].git_diff.new_mode == '160000')
-    assert(session.state.progress.comments[1].stale and not session.state.progress.comments[2].stale)
+    assert(session.state.progress.comments[1].status == 'stale' and session.state.progress.comments[2].status == 'open')
   end)
 end
 
@@ -299,22 +354,26 @@ M.start_should_match_git_snapshot_ranges_when_explicit_target_moves = function()
       return session.state.kind == 'active'
     end))
     local records = session.state.progress.comments
-    assert(#records == 1 and records[1].id == new.id and records[1].start_line == 3 and not records[1].stale)
+    assert(#records == 1 and records[1].id == new.id and records[1].start_line == 3 and records[1].status == 'open')
   end)
 end
 
 M.refresh_should_capture_new_neighbors_when_boundary_anchor_moves = function()
   with_review(function(session, repo)
-    local note =
-      assert(session:add_comment({ file_id = id, side = 'current', start_line = 1, end_line = 1 }, 'boundary'))
+    local note = assert(session:add_comment({ file_id = id, start_line = 1, end_line = 1 }, 'boundary'))
     assert(note.context_before == nil)
     repo:write_file('file.txt', { 'prefix', 'before', 'anchor', 'range', 'after', 'changed' })
     refresh(session)
     local record = session.state.progress.comments[1]
-    assert(record.id == note.id and record.start_line == 2 and record.context_before == 'prefix' and not record.stale)
+    assert(
+      record.id == note.id and record.start_line == 2 and record.context_before == 'prefix' and record.status == 'open'
+    )
     repo:write_file('file.txt', { 'other prefix', 'before', 'anchor', 'range', 'after', 'changed' })
     refresh(session)
-    assert(session.state.progress.comments[1].stale and session.state.progress.comments[1].context_before == 'prefix')
+    assert(
+      session.state.progress.comments[1].status == 'stale'
+        and session.state.progress.comments[1].context_before == 'prefix'
+    )
   end)
 end
 

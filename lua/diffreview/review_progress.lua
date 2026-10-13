@@ -50,14 +50,16 @@ function M.reconcile(previous, loaded, views)
     record.fingerprint = assert(loaded.entries_by_id[summary.id].fingerprint)
     summary.viewed = record.viewed_fingerprint == record.fingerprint
   end
+  local comment_state = comments.new(vim.deepcopy(previous and previous.comments or {}))
+  comment_state:reconcile(loaded, views or {})
   return {
-    version = 2,
+    version = 3,
     identity = loaded.identity,
     from_oid = loaded.comparison.from_oid,
     to_oid = loaded.comparison.to_oid,
     head_oid = loaded.comparison.head_oid,
     files = records,
-    comments = comments.reconcile(previous and previous.comments or {}, loaded, views or {}),
+    comments = comment_state.records,
   }
 end
 

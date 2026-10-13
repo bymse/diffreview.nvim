@@ -1,5 +1,7 @@
 # Spec 001: Durable Comment Records
 
+Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's original side, boolean-status, display-path and version-2 schema details. The stateful `Comments` API and checkpoint version 3 are recorded in `specs/IMPLEMENTATION_LOG.md`.
+
 ## Goal
 
 Provide validated, durable local comment records and persistence-backed comment management through a review-session interface, without any new editor UI.

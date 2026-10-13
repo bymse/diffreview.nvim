@@ -52,9 +52,11 @@ M.review_comments_should_navigate_edit_toggle_and_delete_when_native_rows_are_se
     vim.cmd('ReviewComments')
     review.comment_row(2)
     review.keys('r')
-    assert(saved().comments[2].resolved)
+    assert(saved().comments[2].status == 'resolved')
     review.keys('r')
-    assert(not saved().comments[2].resolved)
+    assert(vim.wait(2000, function()
+      return saved().comments[2].status == 'open'
+    end))
     review.keys('e')
     review.write_comment('edited', saved)
     assert(saved().comments[2].body == 'edited')

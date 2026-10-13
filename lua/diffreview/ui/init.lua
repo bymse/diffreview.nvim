@@ -32,6 +32,7 @@ local M = {}
 ---@field side_by_side ReviewSideBySideState
 ---@field quickfix_id quickfix_id|nil
 ---@field comment_quickfix_id quickfix_id|nil
+---@field comment_paths table<string, string>|nil
 ---@field handlers ReviewUiHandlers|nil
 ---@field tab_closed_autocmd integer|nil
 ---@field tab_acquired boolean
@@ -136,7 +137,7 @@ function ReviewUi:comment_context(first, last)
     return { file_id = id }
   end
   local line = vim.api.nvim_win_get_cursor(window)[1]
-  return { file_id = id, side = side, start_line = first or line, end_line = last or line }
+  return { file_id = id, start_line = first or line, end_line = last or line }
 end
 
 ---@param id string
@@ -179,9 +180,17 @@ function ReviewUi:comments_open()
 end
 
 ---@param records ReviewComment[]
+---@param files ReviewFileRecord[]|nil
 ---@return nil
-function ReviewUi:update_review_comments(records)
-  self.comment_quickfix_id = quickfix.update_review_comments(self.comment_quickfix_id, self.instance_id, records)
+function ReviewUi:update_review_comments(records, files)
+  if files then
+    self.comment_paths = {}
+    for _, file in ipairs(files) do
+      self.comment_paths[file.id] = file.display_path
+    end
+  end
+  self.comment_quickfix_id =
+    quickfix.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
   side_by_side.update_comments(self, records)
 end
 
@@ -199,7 +208,8 @@ function ReviewUi:show_review_comments(records)
         if self.handlers and self.handlers.on_comment_action then
           self.handlers.on_comment_action(key, id)
         end
-      end
+      end,
+      self.comment_paths
     )
   end)
 end
