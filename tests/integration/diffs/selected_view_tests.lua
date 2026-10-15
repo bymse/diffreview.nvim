@@ -28,6 +28,7 @@ local function selected_view(repo, file_id, from, to)
   assert(loaded.entries_by_id[file_id] ~= nil, 'expected selected entry in loaded review')
   local view = diffs.load_selected_view_model(loaded, file_id)
   assert(view ~= nil, 'expected selected view')
+  assert(view.file_id == file_id)
   validator.validate(view)
   return loaded, view
 end
@@ -276,6 +277,7 @@ M.load_selected_view_model_should_return_error_view_when_known_worktree_content_
     local view = diffs.load_selected_view_model(loaded, 'new:untracked.txt')
 
     assert(view ~= nil and view.operation == 'error', 'expected per-file content error view')
+    assert(view.file_id == 'new:untracked.txt')
     assert(view.attempted_operation == 'untracked' and view.path == 'untracked.txt')
     validator.validate(view)
   end)

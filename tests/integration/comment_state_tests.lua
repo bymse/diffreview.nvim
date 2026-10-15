@@ -235,6 +235,30 @@ M.add_comment_should_reject_superseded_operation_when_content_loading_yields = f
   end)
 end
 
+M.add_comment_should_capture_original_location_when_caller_changes_target_during_loading = function()
+  with_review(function(session)
+    select(session, file_id)
+    local target = { file_id = file_id, start_line = 2, end_line = 3 }
+    local done, result, err
+    local running = coroutine.create(function()
+      result, err = session:add_comment(target, 'pinned target')
+      done = true
+    end)
+    assert(coroutine.resume(running))
+    assert(coroutine.status(running) == 'suspended')
+    target.file_id = 'new:other.txt'
+    target.start_line, target.end_line = 1, 100
+    assert(vim.wait(2000, function()
+      return done
+    end))
+    assert(result ~= nil, err)
+    assert(result.file_id == file_id and result.start_line == 2 and result.end_line == 3)
+    assert(result.anchor_hash == vim.fn.sha256('same\nnew'))
+    local saved = assert(storage.load(session.state.loaded.storage_path, session.state.loaded.identity))
+    assert(vim.deep_equal(saved.comments, { result }))
+  end)
+end
+
 M.add_comment_should_allow_only_file_notes_when_selected_side_has_no_text = function()
   with_review(function(session, repo)
     select(session, 'new:other.txt')

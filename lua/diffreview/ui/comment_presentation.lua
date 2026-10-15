@@ -23,21 +23,6 @@ function M.update(views, state, namespace, records)
 end
 
 ---@param views ReviewDisplayedView[]
----@param id string
----@param side 'old'|'current'
----@param lines string[]
----@return boolean
-function M.text_matches(views, id, side, lines)
-  local expected = #lines == 0 and { '' } or lines
-  for _, view in ipairs(views) do
-    if view.file_id == id and view.side == side then
-      return vim.deep_equal(vim.api.nvim_buf_get_lines(view.buffer, 0, -1, false), expected)
-    end
-  end
-  return false
-end
-
----@param views ReviewDisplayedView[]
 ---@param record ReviewComment
 ---@return boolean
 function M.focus(views, record)

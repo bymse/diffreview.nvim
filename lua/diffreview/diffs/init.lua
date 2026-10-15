@@ -290,7 +290,12 @@ function M.load_selected_view_model(loaded, file_id, operation, snapshot_worktre
   if entry == nil then
     return nil
   end
-  return content.load(loaded.repo, loaded.comparison.target_is_worktree, entry, operation, snapshot_worktree)
+  local view, snapshot, nontext =
+    content.load(loaded.repo, loaded.comparison.target_is_worktree, entry, operation, snapshot_worktree)
+  if view ~= nil then
+    view.file_id = file_id
+  end
+  return view, snapshot, nontext
 end
 
 ---@param loaded LoadedDiffs

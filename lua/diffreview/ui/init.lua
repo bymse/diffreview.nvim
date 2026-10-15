@@ -149,11 +149,14 @@ function ReviewUi:comment_context(first, last)
 end
 
 ---@param id string
----@param side 'old'|'current'
----@param lines string[]
----@return boolean
-function ReviewUi:comment_text_matches(id, side, lines)
-  return comment_presentation.text_matches(self:displayed_views(), id, side, lines)
+---@return string[]|nil
+function ReviewUi:current_text(id)
+  for _, view in ipairs(self:displayed_views()) do
+    if view.file_id == id and view.side == 'current' then
+      return vim.api.nvim_buf_get_lines(view.buffer, 0, -1, false)
+    end
+  end
+  return nil
 end
 
 ---@return ReviewDisplayedView[]
@@ -194,33 +197,32 @@ end
 
 ---@param records ReviewComment[]
 ---@param files ReviewFileRecord[]|nil
+---@param open_drawer boolean|nil
 ---@return nil
-function ReviewUi:update_review_comments(records, files)
+function ReviewUi:display_review_comments(records, files, open_drawer)
   if files then
     self.comment_paths = {}
     for _, file in ipairs(files) do
       self.comment_paths[file.id] = file.display_path
     end
   end
-  self.comment_quickfix_id =
-    comments_list.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
+  if open_drawer then
+    local tab = acquire_tab(self)
+    present_in_review_tab(tab, function()
+      self.comment_quickfix_id = comments_list.show_review_comments(
+        self.comment_quickfix_id,
+        self.instance_id,
+        tab,
+        records,
+        assert(self.handlers, 'review UI handlers are unavailable'),
+        self.comment_paths
+      )
+    end)
+  else
+    self.comment_quickfix_id =
+      comments_list.update_review_comments(self.comment_quickfix_id, self.instance_id, records, self.comment_paths)
+  end
   comment_presentation.update(self:displayed_views(), self.decorations, self.comment_namespace, records)
-end
-
----@param records ReviewComment[]
----@return nil
-function ReviewUi:show_review_comments(records)
-  local tab = acquire_tab(self)
-  present_in_review_tab(tab, function()
-    self.comment_quickfix_id = comments_list.show_review_comments(
-      self.comment_quickfix_id,
-      self.instance_id,
-      tab,
-      records,
-      assert(self.handlers, 'review UI handlers are unavailable'),
-      self.comment_paths
-    )
-  end)
 end
 
 ---@param records ReviewComment[]
@@ -232,7 +234,7 @@ function ReviewUi:toggle_review_comments(records)
   if self:comments_open() then
     quickfix.close_drawer(self.comment_quickfix_id, self.instance_id, 'comments')
   else
-    self:show_review_comments(records)
+    self:display_review_comments(records, nil, true)
   end
   return true
 end
@@ -254,18 +256,16 @@ end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
----@param file_id string|nil
 ---@return nil
-function ReviewUi:refresh_selected_diff(diff, layout, file_id)
-  self:display_diff_side_by_side(diff, layout, true, file_id)
+function ReviewUi:refresh_selected_diff(diff, layout)
+  self:display_diff_side_by_side(diff, layout, true)
 end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
 ---@param keep_drawer boolean|nil
----@param file_id string|nil
 ---@return nil
-function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
+function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
   validator.validate(diff)
   if layout ~= 'horizontal' and layout ~= 'vertical' then
     error('Invalid view layout: ' .. tostring(layout))
@@ -278,7 +278,7 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
     end
     decoration_tracker.clear(self.decorations)
     side_by_side.display_side_by_side(self, diff, layout)
-    self.side_by_side.presented_id = diff.operation ~= 'error' and file_id or nil
+    self.side_by_side.presented_id = diff.operation ~= 'error' and diff.file_id or nil
   end)
 end
 

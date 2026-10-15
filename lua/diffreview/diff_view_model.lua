@@ -32,44 +32,47 @@ local M = {}
 ---@field mode DiffFileMode
 ---@field content DiffFileContent
 
----@class AddedDiff
+---@class DiffViewIdentity
+---@field file_id string|nil
+
+---@class AddedDiff: DiffViewIdentity
 ---@field operation 'added'|'untracked'
 ---@field current DiffFileVersion
 
----@class DeletedDiff
+---@class DeletedDiff: DiffViewIdentity
 ---@field operation 'deleted'
 ---@field old DiffFileVersion
 
----@class ModifiedDiff
+---@class ModifiedDiff: DiffViewIdentity
 ---@field operation 'modified'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
----@class RenamedDiff
+---@class RenamedDiff: DiffViewIdentity
 ---@field operation 'renamed'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
----@class CopiedDiff
+---@class CopiedDiff: DiffViewIdentity
 ---@field operation 'copied'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
----@class TypeChangedDiff
+---@class TypeChangedDiff: DiffViewIdentity
 ---@field operation 'type_changed'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 
----@class UnmergedDiff
+---@class UnmergedDiff: DiffViewIdentity
 ---@field operation 'unmerged'
 ---@field current DiffFileVersion
 
 ---@alias DiffOperation 'added'|'untracked'|'deleted'|'modified'|'renamed'|'copied'|'type_changed'|'unmerged'
 
----@class ErrorDiff
+---@class ErrorDiff: DiffViewIdentity
 ---@field operation 'error'
 ---@field attempted_operation DiffOperation
 ---@field path string

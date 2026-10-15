@@ -15,8 +15,8 @@ local M = {}
 ---@field loaded LoadedDiffs
 ---@field selected_id string|nil
 ---@field selected_presented boolean
----@field load_current_view fun(file_id: string): (DiffViewModel|nil, string|nil)
----@field text_matches fun(file_id: string, lines: string[]): boolean
+---@field view_model DiffViewModel|nil
+---@field displayed_lines string[]|nil
 ---@field preview_lines string[]|nil
 
 ---@class Comments
@@ -32,6 +32,13 @@ end
 
 local function positive_integer(value)
   return type(value) == 'number' and value > 0 and value < math.huge and value % 1 == 0
+end
+
+---@param lines string[]
+---@param displayed_lines string[]|nil
+---@return boolean
+function M.text_matches(lines, displayed_lines)
+  return displayed_lines ~= nil and vim.deep_equal(#lines == 0 and { '' } or lines, displayed_lines)
 end
 
 ---@param location CommentLocation
@@ -171,16 +178,16 @@ function Comments:add(location, body, context)
     if context.selected_id ~= location.file_id or not context.selected_presented then
       return nil, 'Text comments require the selected review file'
     end
-    local view, err = context.load_current_view(location.file_id)
-    if view == nil then
-      return nil, err
+    local view = context.view_model
+    if view == nil or view.file_id ~= location.file_id then
+      return nil, 'Comment comparison text is unavailable'
     end
     local version = view.current
     if version == nil or version.content.kind ~= 'text' or version.content.source ~= 'snapshot' then
       return nil, 'Comment side has no comparison text'
     end
     lines = version.content.lines
-    if not context.text_matches(location.file_id, lines) then
+    if not M.text_matches(lines, context.displayed_lines) then
       return nil, 'Displayed text does not match the comparison'
     end
     if context.preview_lines then

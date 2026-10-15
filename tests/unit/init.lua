@@ -1,5 +1,6 @@
 return {
   'unit.config_normalize_tests',
+  'unit.comments_tests',
   'unit.diff_parsers_tests',
   'unit.file_mode_tests',
   'unit.diff_view_model_validator_tests',

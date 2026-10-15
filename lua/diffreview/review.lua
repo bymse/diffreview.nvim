@@ -99,11 +99,11 @@ local function select_file(session, file_id, comment)
       if diff == nil or not is_selection_current(session, active, request) then
         return
       end
-      active.ui:display_diff_side_by_side(diff, session.config.layout, nil, file_id)
+      active.ui:display_diff_side_by_side(diff, session.config.layout)
       if diff.operation ~= 'error' and is_selection_current(session, active, request) then
         active.selected_id = file_id
         active.selected_presented = true
-        active.ui:update_review_comments(active.progress.comments, active.progress.files)
+        active.ui:display_review_comments(active.progress.comments, active.progress.files)
         if comment then
           active.ui:focus_comment(comment)
         end
@@ -321,10 +321,7 @@ function ReviewSession:start(options)
         options = options_copy,
         refresh_request = nil,
       }
-      review_ui:update_review_comments(progress.comments, progress.files)
-      if #loaded.files == 0 then
-        review_ui:show_review_comments(progress.comments)
-      end
+      review_ui:display_review_comments(progress.comments, progress.files, #loaded.files == 0)
     end, debug.traceback)
     if not ok then
       fail_start(self, operation, review_ui, tostring(err))
@@ -416,16 +413,13 @@ function ReviewSession:refresh(preloaded)
       active.ui:update_review_files(loaded.files)
       if diff ~= nil then
         active.selected_presented = diff.operation ~= 'error'
-        active.ui:refresh_selected_diff(diff, self.config.layout, selected)
+        active.ui:refresh_selected_diff(diff, self.config.layout)
       end
-      active.ui:update_review_comments(candidate.comments, candidate.files)
-      if #loaded.files == 0 and #candidate.comments > 0 then
-        active.ui:show_review_comments(candidate.comments)
-      elseif comments_open then
-        active.ui:show_review_comments(candidate.comments)
-      elseif files_open then
+      local show_comments = (#loaded.files == 0 and #candidate.comments > 0) or comments_open
+      active.ui:display_review_comments(candidate.comments, candidate.files, show_comments)
+      if not show_comments and files_open then
         active.ui:show_review_files(loaded.files)
-      elseif selected ~= nil and diff == nil and #candidate.comments == 0 then
+      elseif not show_comments and selected ~= nil and diff == nil and #candidate.comments == 0 then
         active.ui:show_review_files(loaded.files)
       end
     end, debug.traceback)
@@ -603,16 +597,16 @@ function ReviewSession:mark_files(file_ids, viewed)
     end
   end
   active.ui:update_review_files(active.loaded.files)
-  active.ui:update_review_comments(active.progress.comments, active.progress.files)
+  active.ui:display_review_comments(active.progress.comments, active.progress.files)
   return true, nil
 end
 
 ---@param session ReviewSession
 ---@param prepare fun(state: Comments, context: CommentCaptureContext, view_models_by_file_id: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
 ---@param id string|nil
----@param preview_lines string[]|nil
+---@param location CommentLocation|nil
 ---@return ReviewComment|boolean|nil, string|nil
-local function mutate_comment(session, prepare, id, preview_lines, editor_write, invalidate, verify_record)
+local function mutate_comment(session, prepare, id, location, editor_write, invalidate, verify_record)
   local active = session.state
   if active.kind ~= 'active' then
     return nil, 'No active review'
@@ -635,33 +629,31 @@ local function mutate_comment(session, prepare, id, preview_lines, editor_write,
   if not current() then
     return nil, 'Review mutation unavailable'
   end
-  ---@type CommentCaptureContext
-  local context = {
-    loaded = loaded,
-    selected_id = selected,
-    selected_presented = active.selected_presented,
-    preview_lines = preview_lines,
-    load_current_view = function(file_id)
-      local diff, snapshot = diffs.load_selected_view_model(loaded, file_id, active.operation, true)
-      if not current() then
-        return nil, 'Review changed during comment loading'
-      end
-      if
-        diff == nil
-        or diff.operation == 'error'
-        or not diffs.selected_fingerprint_matches(loaded, file_id, active.operation, snapshot)
-      then
-        return nil, 'Comparison content changed; refresh the review'
-      end
-      if not current() then
-        return nil, 'Review changed during comment loading'
-      end
-      return diff, nil
-    end,
-    text_matches = function(file_id, lines)
-      return current() and active.selected_presented and active.ui:comment_text_matches(file_id, 'current', lines)
-    end,
-  }
+  local capture_view_model
+  if
+    type(location) == 'table'
+    and location.start_line ~= nil
+    and selected ~= nil
+    and location.file_id == selected
+    and active.selected_presented
+    and loaded.entries_by_id[selected] ~= nil
+  then
+    local diff, snapshot = diffs.load_selected_view_model(loaded, selected, active.operation, true)
+    if not current() then
+      return nil, 'Review changed during comment loading'
+    end
+    if
+      diff == nil
+      or diff.operation == 'error'
+      or not diffs.selected_fingerprint_matches(loaded, selected, active.operation, snapshot)
+    then
+      return nil, 'Comparison content changed; refresh the review'
+    end
+    if not current() then
+      return nil, 'Review changed during comment loading'
+    end
+    capture_view_model = diff
+  end
   ---@type table<string, DiffViewModel>|nil
   local view_models_by_file_id = {}
   if verify_record then
@@ -689,11 +681,19 @@ local function mutate_comment(session, prepare, id, preview_lines, editor_write,
       and version
       and version.content.kind == 'text'
       and version.content.source == 'snapshot'
-      and not active.ui:comment_text_matches(record.file_id, 'current', version.content.lines)
+      and not comments.text_matches(version.content.lines, active.ui:current_text(record.file_id))
     then
       return nil, 'Displayed text does not match the comparison'
     end
   end
+  ---@type CommentCaptureContext
+  local context = {
+    loaded = loaded,
+    selected_id = selected,
+    selected_presented = active.selected_presented,
+    view_model = capture_view_model,
+    displayed_lines = capture_view_model and active.ui:current_text(assert(selected)) or nil,
+  }
   local comment_state = active.comments:fork()
   local result, err = prepare(comment_state, context, assert(view_models_by_file_id))
   if result == nil then
@@ -717,7 +717,7 @@ local function mutate_comment(session, prepare, id, preview_lines, editor_write,
     end
   end
   active.ui:update_review_files(active.loaded.files)
-  active.ui:update_review_comments(candidate.comments, candidate.files)
+  active.ui:display_review_comments(candidate.comments, candidate.files)
   return result, nil
 end
 
@@ -726,9 +726,10 @@ end
 ---@return ReviewComment|nil, string|nil
 ---Text locations must be called from a coroutine, like the comparison loader.
 function ReviewSession:add_comment(location, body)
+  local target = vim.deepcopy(location)
   local result, err = mutate_comment(self, function(state, context)
-    return state:add(location, body, context)
-  end)
+    return state:add(target, body, context)
+  end, nil, target)
   ---@cast result ReviewComment|nil
   return result, err
 end
@@ -898,9 +899,11 @@ local function open_editor(session, target, id, body)
         return state:edit(draft.comment_id, text, active.loaded, view_models_by_file_id)
       end, draft.comment_id, nil, true, false, stale)
     else
+      local target = vim.deepcopy(draft.target)
       result, err = mutate_comment(session, function(state, context)
-        return state:add(draft.target, text, context)
-      end, nil, preview_lines, true)
+        context.preview_lines = preview_lines
+        return state:add(target, text, context)
+      end, nil, target, true)
     end
     if not result then
       return nil, err

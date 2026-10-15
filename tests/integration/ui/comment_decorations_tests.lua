@@ -43,28 +43,29 @@ M.render_should_keep_stale_text_at_file_level_and_clear_only_comments_when_reuse
   vim.api.nvim_buf_delete(buffer, { force = true })
 end
 
-M.update_review_comments_should_clear_prior_buffers_and_preserve_diff_marks_when_selection_changes = function()
+M.display_review_comments_should_clear_prior_buffers_and_preserve_diff_marks_when_selection_changes = function()
   local view = ui.get_ui(handlers)
   view:display_diff_side_by_side(
-    { operation = 'untracked', current = helpers.snapshot('first.txt', { 'one', 'two' }) },
-    'vertical',
-    nil,
-    'first'
+    { file_id = 'first', operation = 'untracked', current = helpers.snapshot('first.txt', { 'one', 'two' }) },
+    'vertical'
   )
   local buffer = helpers.main_buffer(view)
   local diff_marks = vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {})
   assert(#diff_marks > 0)
-  view:update_review_comments({
-    { comment_id = 'note', file_id = 'first', body = 'note', status = 'open' },
-  })
+  view:display_review_comments(
+    { { comment_id = 'note', file_id = 'first', body = 'note', status = 'open' } },
+    { { id = 'first', display_path = 'first.txt', added_lines = 1, removed_lines = 0, fingerprint = 'first' } },
+    true
+  )
+  assert(view:comments_open())
+  local row = vim.fn.getqflist({ items = 1 }).items[1]
+  assert(row.text:find('first.txt', 1, true) and row.user_data.comment_id == 'note')
   local namespace = view.comment_namespace
   assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 1)
   assert(vim.deep_equal(vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {}), diff_marks))
   view:display_diff_side_by_side(
-    { operation = 'untracked', current = helpers.snapshot('second.txt', { 'second' }) },
-    'vertical',
-    nil,
-    'second'
+    { file_id = 'second', operation = 'untracked', current = helpers.snapshot('second.txt', { 'second' }) },
+    'vertical'
   )
   assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 0)
   assert(vim.deep_equal(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), { 'second' }))
@@ -80,11 +81,11 @@ M.cleanup_should_clear_all_review_namespaces_and_preserve_unrelated_marks_when_b
   local unrelated = vim.api.nvim_create_namespace('test.unrelated')
   local buffers = {}
   for _, path in ipairs({ first_path, second_path }) do
-    view:display_diff_side_by_side({ operation = 'added', current = helpers.path(path) }, 'vertical', nil, path)
+    view:display_diff_side_by_side({ file_id = path, operation = 'added', current = helpers.path(path) }, 'vertical')
     local buffer = helpers.main_buffer(view)
     buffers[#buffers + 1] = buffer
     vim.api.nvim_buf_set_extmark(buffer, unrelated, 0, 0, {})
-    view:update_review_comments({ { comment_id = path, file_id = path, body = 'note', status = 'open' } })
+    view:display_review_comments({ { comment_id = path, file_id = path, body = 'note', status = 'open' } })
     assert(#vim.api.nvim_buf_get_extmarks(buffer, view.comment_namespace, 0, -1, {}) == 1)
     assert(#vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {}) == 1)
   end
@@ -101,21 +102,18 @@ M.cleanup_should_clear_all_review_namespaces_and_preserve_unrelated_marks_when_b
   vim.fn.delete(second_path)
 end
 
-M.comment_text_matches_should_reject_replaced_buffers_when_review_window_remains_owned = function()
+M.current_text_should_reject_replaced_buffers_when_review_window_remains_owned = function()
   local view = ui.get_ui(handlers)
   view:display_diff_side_by_side(
-    { operation = 'untracked', current = helpers.snapshot('empty.txt', {}) },
-    'vertical',
-    nil,
-    'file'
+    { file_id = 'file', operation = 'untracked', current = helpers.snapshot('empty.txt', {}) },
+    'vertical'
   )
-  assert(view:comment_text_matches('file', 'current', {}))
-  assert(not view:comment_text_matches('other', 'current', {}))
-  assert(not view:comment_text_matches('file', 'old', {}))
+  assert(vim.deep_equal(view:current_text('file'), { '' }))
+  assert(view:current_text('other') == nil)
   local window = vim.api.nvim_get_current_win()
   local replacement = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(window, replacement)
-  assert(not view:comment_text_matches('file', 'current', {}))
+  assert(view:current_text('file') == nil)
   assert(view:comment_context() == nil)
   assert(not view:focus_comment({ comment_id = 'note', file_id = 'file', body = 'note', status = 'open' }))
   view:cleanup()

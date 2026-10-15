@@ -1,4 +1,5 @@
 local comments = require('diffreview.comments')
+local async_operation = require('diffreview.async_operation')
 local diffs = require('diffreview.diffs')
 local git_repo = require('helpers.git_repo')
 local ui = require('diffreview.ui')
@@ -18,22 +19,16 @@ local function with_capture(run)
     assert(result.ok and loaded ~= nil)
     local view = ui.get_ui(handlers)
     local model = assert(diffs.load_selected_view_model(loaded, file_id))
-    view:display_diff_side_by_side(model, 'vertical', nil, file_id)
+    view:display_diff_side_by_side(model, 'vertical')
+    local current, fingerprint = diffs.load_selected_view_model(loaded, file_id, nil, true)
+    assert(current ~= nil and diffs.selected_fingerprint_matches(loaded, file_id, async_operation.new(), fingerprint))
     ---@type CommentCaptureContext
     local context = {
       loaded = loaded,
       selected_id = file_id,
       selected_presented = true,
-      load_current_view = function(id)
-        local current, fingerprint = diffs.load_selected_view_model(loaded, id, nil, true)
-        if not diffs.selected_fingerprint_matches(loaded, id, nil, fingerprint) then
-          return nil, 'Comparison changed'
-        end
-        return current, nil
-      end,
-      text_matches = function(id, lines)
-        return view:comment_text_matches(id, 'current', lines)
-      end,
+      view_model = current,
+      displayed_lines = view:current_text(file_id),
     }
     local ok, err = xpcall(function()
       run(comments.new({}), context, view)
@@ -81,9 +76,11 @@ M.add_should_reject_unseen_text_when_display_or_preview_differs_from_snapshot = 
     local location = { file_id = file_id, start_line = 1, end_line = 1 }
     local buffer = helpers.main_buffer(view)
     vim.api.nvim_buf_set_lines(buffer, 0, 1, false, { 'unsaved' })
+    context.displayed_lines = view:current_text(file_id)
     assert(state:add(location, 'unsaved', context) == nil)
     vim.api.nvim_buf_set_lines(buffer, 0, 1, false, { 'after' })
     vim.bo[buffer].modified = false
+    context.displayed_lines = view:current_text(file_id)
     context.preview_lines = { 'unseen', 'same' }
     assert(state:add(location, 'unseen', context) == nil)
     assert(#state.records == 0)
@@ -96,9 +93,30 @@ M.add_should_allow_file_notes_when_file_is_not_selected_or_presented = function(
   with_capture(function(state, context)
     context.selected_id = nil
     context.selected_presented = false
+    context.view_model = nil
+    context.displayed_lines = nil
     local record = assert(state:add({ file_id = file_id }, 'file note', context))
     assert(record.start_line == nil and record.anchor_hash == nil and record.status == 'open')
     assert(comments.validate(state.records))
+  end)
+end
+
+M.add_should_reject_unavailable_capture_data_when_preloaded_context_cannot_verify_target = function()
+  with_capture(function(state, context)
+    local location = { file_id = file_id, start_line = 1, end_line = 1 }
+    local model = context.view_model
+    context.view_model = nil
+    assert(state:add(location, 'missing snapshot', context) == nil)
+    context.view_model = vim.deepcopy(model)
+    context.view_model.file_id = 'other'
+    assert(state:add(location, 'wrong snapshot', context) == nil)
+    context.view_model = model
+    local displayed = context.displayed_lines
+    context.displayed_lines = nil
+    assert(state:add(location, 'missing display', context) == nil)
+    assert(#state.records == 0)
+    context.displayed_lines = displayed
+    assert(state:add(location, 'verified', context).anchor_hash == vim.fn.sha256('after'))
   end)
 end
 
