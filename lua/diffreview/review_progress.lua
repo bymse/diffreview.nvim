@@ -53,7 +53,7 @@ function M.reconcile(previous, loaded, view_models_by_file_id)
   local comment_state = comments.new(vim.deepcopy(previous and previous.comments or {}))
   comment_state:reconcile(loaded, view_models_by_file_id or {})
   return {
-    version = 4,
+    version = 5,
     identity = loaded.identity,
     from_oid = loaded.comparison.from_oid,
     to_oid = loaded.comparison.to_oid,

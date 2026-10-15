@@ -2,6 +2,8 @@
 
 Fixed-range follow-up: the approved 2026-10-13 simplification in `specs/CONTEXT.md` supersedes text/context anchors and reattachment APIs below. Version 4 stores a selected-range hash at fixed coordinates; stale edits acknowledge available current locations, and manual reattachment is removed.
 
+Validation-ownership follow-up: comment records now use `comment_id` in checkpoint version 5. `Comments:add` owns creation eligibility and anchor capture using request-scoped comparison facts and loading/display capabilities; location-shape validation is private. Session request guards, fingerprint verification, and save-before-adopt remain session-owned. See `specs/CONTEXT.md` for the current contract.
+
 Follow-up contract: the approved 2026-10-13 review changes in `specs/CONTEXT.md` supersede this phase's original side, boolean-status, display-path and version-2 schema details. The stateful `Comments` API and checkpoint version 3 are recorded in `specs/IMPLEMENTATION_LOG.md`.
 
 ## Goal

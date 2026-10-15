@@ -27,7 +27,7 @@ M.load_should_reject_incompatible_identity_and_invalid_checkpoint_without_overwr
       target = 'worktree:current',
     }
     local state = {
-      version = 4,
+      version = 5,
       comments = {},
       identity = identity,
       from_oid = string.rep('a', 40),
@@ -110,14 +110,14 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
     local identity =
       { repository_root = repo.cwd, source = 'branch:main', baseline = 'head:HEAD', target = 'worktree:current' }
     local state = {
-      version = 4,
+      version = 5,
       identity = identity,
       from_oid = string.rep('a', 40),
       files = {},
       comments = {
-        { id = 'one', file_id = 'stored:f', body = 'note', status = 'open' },
+        { comment_id = 'one', file_id = 'stored:f', body = 'note', status = 'open' },
         {
-          id = 'two',
+          comment_id = 'two',
           file_id = 'stored:f',
           body = 'text',
           status = 'resolved',
@@ -132,19 +132,29 @@ M.save_should_preserve_valid_checkpoint_when_comment_schema_is_invalid = functio
     local original = vim.fn.readfile(path)[1]
     local cases = {
       function(value)
+        value.version = 4
+      end,
+      function(value)
+        value.comments[1].id = value.comments[1].comment_id
+        value.comments[1].comment_id = nil
+      end,
+      function(value)
+        value.comments[1].id = value.comments[1].comment_id
+      end,
+      function(value)
         value.comments = nil
       end,
       function(value)
         value.comments = { bad = true }
       end,
       function(value)
-        value.comments[2].id = 'one'
+        value.comments[2].comment_id = 'one'
       end,
       function(value)
-        value.comments[1].id = ''
+        value.comments[1].comment_id = ''
       end,
       function(value)
-        value.comments[1].id = 1
+        value.comments[1].comment_id = 1
       end,
       function(value)
         value.comments[1].file_id = ''

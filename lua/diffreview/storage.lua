@@ -68,7 +68,7 @@ end
 ---@param identity ReviewIdentity
 ---@return boolean, string|nil
 validate = function(value, identity)
-  if type(value) ~= 'table' or value.version ~= 4 then
+  if type(value) ~= 'table' or value.version ~= 5 then
     return false, 'Unsupported review state version'
   end
   local saved = value.identity

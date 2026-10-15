@@ -1,7 +1,7 @@
 local M = {}
 
 ---@class ReviewComment: CommentLocation
----@field id string
+---@field comment_id string
 ---@field body string
 ---@field status 'open'|'resolved'|'stale'
 ---@field anchor_hash string|nil
@@ -10,6 +10,14 @@ local M = {}
 ---@field file_id string
 ---@field start_line integer|nil
 ---@field end_line integer|nil
+
+---@class CommentCaptureContext
+---@field loaded LoadedDiffs
+---@field selected_id string|nil
+---@field selected_presented boolean
+---@field load_current_view fun(file_id: string): (DiffViewModel|nil, string|nil)
+---@field text_matches fun(file_id: string, lines: string[]): boolean
+---@field preview_lines string[]|nil
 
 ---@class Comments
 ---@field records ReviewComment[]
@@ -28,7 +36,7 @@ end
 
 ---@param location CommentLocation
 ---@return boolean
-function M.valid_location(location)
+local function valid_location(location)
   if type(location) ~= 'table' or not nonblank(location.file_id) or rawget(location, 'side') ~= nil then
     return false
   end
@@ -50,9 +58,10 @@ function M.validate(records)
   for _, record in ipairs(records) do
     if
       type(record) ~= 'table'
-      or not nonblank(record.id)
-      or seen[record.id]
-      or not M.valid_location(record)
+      or not nonblank(record.comment_id)
+      or seen[record.comment_id]
+      or rawget(record, 'id') ~= nil
+      or not valid_location(record)
       or not nonblank(record.body)
       or (record.status ~= 'open' and record.status ~= 'resolved' and record.status ~= 'stale')
       or rawget(record, 'resolved') ~= nil
@@ -64,7 +73,7 @@ function M.validate(records)
     then
       return false, 'Invalid review comment record'
     end
-    seen[record.id] = true
+    seen[record.comment_id] = true
     if record.start_line == nil then
       for _, field in ipairs(anchor_fields) do
         if record[field] ~= nil then
@@ -97,7 +106,7 @@ end
 
 local function find(self, id)
   for index, record in ipairs(self.records) do
-    if record.id == id then
+    if record.comment_id == id then
       return record, index
     end
   end
@@ -122,7 +131,7 @@ local function current_hash(record, loaded, view_models_by_file_id)
 end
 
 local function capture(record, location, lines)
-  if not M.valid_location(location) then
+  if not valid_location(location) then
     return nil, 'Invalid comment location'
   end
   if location.start_line and (lines == nil or location.end_line > #lines) then
@@ -144,13 +153,46 @@ end
 
 ---@param location CommentLocation
 ---@param body string
----@param lines string[]|nil
+---@param context CommentCaptureContext
 ---@return ReviewComment|nil, string|nil
-function Comments:add(location, body, lines)
+function Comments:add(location, body, context)
   if not nonblank(body) then
     return nil, 'Comment body must not be blank'
   end
-  local record = { id = vim.fn.sha256(vim.fn.tempname() .. tostring(vim.uv.hrtime())), body = body, status = 'open' }
+  if not valid_location(location) then
+    return nil, 'Invalid comment location'
+  end
+  location = vim.deepcopy(location)
+  if context.loaded.entries_by_id[location.file_id] == nil then
+    return nil, 'File is not in the current comparison'
+  end
+  local lines
+  if location.start_line ~= nil then
+    if context.selected_id ~= location.file_id or not context.selected_presented then
+      return nil, 'Text comments require the selected review file'
+    end
+    local view, err = context.load_current_view(location.file_id)
+    if view == nil then
+      return nil, err
+    end
+    local version = view.current
+    if version == nil or version.content.kind ~= 'text' or version.content.source ~= 'snapshot' then
+      return nil, 'Comment side has no comparison text'
+    end
+    lines = version.content.lines
+    if not context.text_matches(location.file_id, lines) then
+      return nil, 'Displayed text does not match the comparison'
+    end
+    if context.preview_lines then
+      for line = location.start_line, location.end_line do
+        if lines[line] ~= context.preview_lines[line] then
+          return nil, 'Comment preview does not match the comparison; open a new editor'
+        end
+      end
+    end
+  end
+  local record =
+    { comment_id = vim.fn.sha256(vim.fn.tempname() .. tostring(vim.uv.hrtime())), body = body, status = 'open' }
   local result, err = capture(record, location, lines)
   if result then
     self.records[#self.records + 1] = record

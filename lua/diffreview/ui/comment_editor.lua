@@ -5,7 +5,7 @@ local M = {}
 ---@field window integer
 ---@field tab integer
 ---@field target CommentLocation
----@field id string|nil
+---@field comment_id string|nil
 ---@field saving boolean
 ---@field detached boolean
 ---@field save fun(editor: CommentEditor, body: string): boolean|nil, string|nil
@@ -75,7 +75,7 @@ function M.open(tab, target, id, body, preview, save)
     window = 0,
     tab = tab,
     target = vim.deepcopy(target),
-    id = id,
+    comment_id = id,
     saving = false,
     detached = false,
     save = save,

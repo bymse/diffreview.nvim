@@ -26,7 +26,7 @@ local function comment_entries(records, paths)
         location,
         record.body:gsub('\n', ' ')
       ),
-      user_data = { comment_id = record.id },
+      user_data = { comment_id = record.comment_id },
     }
   end
   return entries

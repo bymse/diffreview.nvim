@@ -463,7 +463,7 @@ local function actionable_comment(session, id)
     return nil, 'Save or close the comment editor'
   end
   for _, candidate in ipairs(active.progress.comments) do
-    if candidate.id == id then
+    if candidate.comment_id == id then
       return candidate, nil
     end
   end
@@ -608,11 +608,11 @@ function ReviewSession:mark_files(file_ids, viewed)
 end
 
 ---@param session ReviewSession
----@param prepare fun(state: Comments, lines: string[]|nil, view_models_by_file_id: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
+---@param prepare fun(state: Comments, context: CommentCaptureContext, view_models_by_file_id: table<string, DiffViewModel>): (ReviewComment|boolean|nil, string|nil)
 ---@param id string|nil
----@param location CommentLocation|nil
+---@param preview_lines string[]|nil
 ---@return ReviewComment|boolean|nil, string|nil
-local function mutate_comment(session, prepare, id, location, editor_write, invalidate, verify_record)
+local function mutate_comment(session, prepare, id, preview_lines, editor_write, invalidate, verify_record)
   local active = session.state
   if active.kind ~= 'active' then
     return nil, 'No active review'
@@ -631,56 +631,43 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
       and active.selected_id == selected
       and (editor_write or active.editor == nil or not active.editor:blocked())
       and (active.editor == nil or not active.editor.saving or active.editor:valid())
-      and (type(location) ~= 'table' or location.start_line == nil or active.selected_presented)
   end
   if not current() then
     return nil, 'Review mutation unavailable'
   end
-  local lines
-  if location ~= nil then
-    if location == nil or not comments.valid_location(location) then
-      return nil, 'Invalid comment location'
-    end
-    -- Do not retain caller-owned location data across asynchronous content reads.
-    location = vim.deepcopy(location)
-    local entry = loaded.entries_by_id[location.file_id]
-    if entry == nil then
-      return nil, 'File is not in the current comparison'
-    end
-    if location.start_line ~= nil then
-      if selected ~= location.file_id or not active.selected_presented then
-        return nil, 'Text comments require the selected review file'
-      end
-      local diff, snapshot = diffs.load_selected_view_model(loaded, location.file_id, active.operation, true)
+  ---@type CommentCaptureContext
+  local context = {
+    loaded = loaded,
+    selected_id = selected,
+    selected_presented = active.selected_presented,
+    preview_lines = preview_lines,
+    load_current_view = function(file_id)
+      local diff, snapshot = diffs.load_selected_view_model(loaded, file_id, active.operation, true)
       if not current() then
         return nil, 'Review changed during comment loading'
       end
       if
         diff == nil
         or diff.operation == 'error'
-        or not diffs.selected_fingerprint_matches(loaded, location.file_id, active.operation, snapshot)
+        or not diffs.selected_fingerprint_matches(loaded, file_id, active.operation, snapshot)
       then
         return nil, 'Comparison content changed; refresh the review'
       end
       if not current() then
         return nil, 'Review changed during comment loading'
       end
-      local version = diff.current
-      if version == nil or version.content.kind ~= 'text' or version.content.source ~= 'snapshot' then
-        return nil, 'Comment side has no comparison text'
-      end
-      lines = version.content.lines
-      if not active.ui:comment_text_matches(location.file_id, 'current', lines) then
-        return nil, 'Displayed text does not match the comparison'
-      end
-    end
-  end
+      return diff, nil
+    end,
+    text_matches = function(file_id, lines)
+      return current() and active.selected_presented and active.ui:comment_text_matches(file_id, 'current', lines)
+    end,
+  }
   ---@type table<string, DiffViewModel>|nil
   local view_models_by_file_id = {}
   if verify_record then
     local record
     for _, item in ipairs(progress.comments) do
-      if item.id == id then
+      if item.comment_id == id then
         record = item
         break
       end
@@ -708,7 +695,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
     end
   end
   local comment_state = active.comments:fork()
-  local result, err = prepare(comment_state, lines, assert(view_models_by_file_id))
+  local result, err = prepare(comment_state, context, assert(view_models_by_file_id))
   if result == nil then
     return nil, err
   end
@@ -724,7 +711,7 @@ local function mutate_comment(session, prepare, id, location, editor_write, inva
   active.progress = candidate
   active.comments = comment_state
   if invalidate and id ~= nil then
-    if not editor_write and active.editor and active.editor.id == id then
+    if not editor_write and active.editor and active.editor.comment_id == id then
       active.editor:cleanup()
       active.editor = nil
     end
@@ -739,10 +726,9 @@ end
 ---@return ReviewComment|nil, string|nil
 ---Text locations must be called from a coroutine, like the comparison loader.
 function ReviewSession:add_comment(location, body)
-  local target = vim.deepcopy(location)
-  local result, err = mutate_comment(self, function(state, lines)
-    return state:add(target, body, lines)
-  end, nil, target)
+  local result, err = mutate_comment(self, function(state, context)
+    return state:add(location, body, context)
+  end)
   ---@cast result ReviewComment|nil
   return result, err
 end
@@ -758,7 +744,7 @@ function ReviewSession:edit_comment(id, body)
   end
   local stale = false
   for _, record in ipairs(active.progress.comments) do
-    if record.id == id then
+    if record.comment_id == id then
       stale = record.status == 'stale'
       break
     end
@@ -821,7 +807,8 @@ local function open_editor(session, target, id, body)
   local editor = active.editor
   if editor then
     if
-      editor:valid() and ((id == nil and vim.deep_equal(editor.target, target)) or (id ~= nil and editor.id == id))
+      editor:valid()
+      and ((id == nil and vim.deep_equal(editor.target, target)) or (id ~= nil and editor.comment_id == id))
     then
       editor:focus()
       return true, nil
@@ -884,49 +871,42 @@ local function open_editor(session, target, id, body)
     then
       return nil, 'Comment editor no longer owns an active review'
     end
-    if (draft.id == nil or draft.target.start_line ~= nil) and active.loaded ~= comparison then
+    if (draft.comment_id == nil or draft.target.start_line ~= nil) and active.loaded ~= comparison then
       return nil, 'Comment comparison changed; open a new editor'
     end
     local result, err
     if vim.trim(text) == '' then
-      if draft.id ~= nil then
+      if draft.comment_id ~= nil then
         result, err = mutate_comment(session, function(state)
-          return state:delete(draft.id)
-        end, draft.id, nil, true, true)
+          return state:delete(draft.comment_id)
+        end, draft.comment_id, nil, true, true)
         if not result then
           return nil, err
         end
-        draft.id = nil
+        draft.comment_id = nil
       end
       return true, nil
-    elseif draft.id ~= nil then
+    elseif draft.comment_id ~= nil then
       local stale = false
       for _, record in ipairs(active.progress.comments) do
-        if record.id == draft.id then
+        if record.comment_id == draft.comment_id then
           stale = record.status == 'stale'
           break
         end
       end
       result, err = mutate_comment(session, function(state, _, view_models_by_file_id)
-        return state:edit(draft.id, text, active.loaded, view_models_by_file_id)
-      end, draft.id, nil, true, false, stale)
+        return state:edit(draft.comment_id, text, active.loaded, view_models_by_file_id)
+      end, draft.comment_id, nil, true, false, stale)
     else
-      result, err = mutate_comment(session, function(state, lines)
-        if draft.target.start_line and preview_lines then
-          for line = draft.target.start_line, draft.target.end_line do
-            if lines == nil or lines[line] ~= preview_lines[line] then
-              return nil, 'Comment preview does not match the comparison; open a new editor'
-            end
-          end
-        end
-        return state:add(draft.target, text, lines)
-      end, nil, draft.target, true)
+      result, err = mutate_comment(session, function(state, context)
+        return state:add(draft.target, text, context)
+      end, nil, preview_lines, true)
     end
     if not result then
       return nil, err
     end
     ---@cast result ReviewComment
-    draft.id = result.id
+    draft.comment_id = result.comment_id
     return true, nil
   end)
   return true, nil
@@ -959,7 +939,7 @@ function ReviewSession:edit_comment_by_id(id)
     return nil, 'No active review'
   end
   for _, record in ipairs(active.progress.comments) do
-    if record.id == id then
+    if record.comment_id == id then
       return open_editor(self, {
         file_id = record.file_id,
         start_line = record.start_line,

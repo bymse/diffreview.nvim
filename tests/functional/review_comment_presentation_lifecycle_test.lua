@@ -59,7 +59,7 @@ M.review_comments_should_open_from_closed_drawer_when_refresh_and_restart_have_o
     vim.cmd('ReviewComment')
     review.write_comment('retained note', saved)
     review.close_comment_editor()
-    local original = saved().comments[1].id
+    local original = saved().comments[1].comment_id
     vim.cmd('ReviewFiles')
     repo:write_file('file.txt', { 'one', 'anchor', 'three' })
     vim.cmd('ReviewRefresh')
@@ -80,7 +80,7 @@ M.review_comments_should_open_from_closed_drawer_when_refresh_and_restart_have_o
       return list.id ~= notes and list.title == 'Diff Review Comments' and #list.items == 1
     end))
     review.comment_row(1)
-    assert(saved().comments[1].id == original and saved().comments[1].body == 'still editable')
+    assert(saved().comments[1].comment_id == original and saved().comments[1].body == 'still editable')
   end)
 end
 

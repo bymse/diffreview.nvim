@@ -9,7 +9,7 @@ local function unavailable_write(change)
     }))
     review.write_comment('edited without a location', saved)
     local record = saved().comments[1]
-    assert(record.id == original.id and record.file_id == original.file_id)
+    assert(record.comment_id == original.comment_id and record.file_id == original.file_id)
     assert(record.status == 'stale' and record.anchor_hash == original.anchor_hash)
     assert(record.start_line == original.start_line and record.end_line == original.end_line)
     review.close_comment_editor()

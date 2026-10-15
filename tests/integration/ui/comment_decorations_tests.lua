@@ -16,7 +16,7 @@ M.render_should_keep_stale_text_at_file_level_and_clear_only_comments_when_reuse
   local views = { { window = window, buffer = buffer, file_id = 'file', side = 'current', file_notes = true } }
   presentation.update(views, state, namespace, {
     {
-      id = 'valid',
+      comment_id = 'valid',
       file_id = 'file',
       body = 'range',
       start_line = 2,
@@ -24,7 +24,7 @@ M.render_should_keep_stale_text_at_file_level_and_clear_only_comments_when_reuse
       status = 'open',
     },
     {
-      id = 'stale',
+      comment_id = 'stale',
       file_id = 'file',
       body = 'lost',
       start_line = 3,
@@ -55,7 +55,7 @@ M.update_review_comments_should_clear_prior_buffers_and_preserve_diff_marks_when
   local diff_marks = vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {})
   assert(#diff_marks > 0)
   view:update_review_comments({
-    { id = 'note', file_id = 'first', body = 'note', status = 'open' },
+    { comment_id = 'note', file_id = 'first', body = 'note', status = 'open' },
   })
   local namespace = view.comment_namespace
   assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 1)
@@ -84,7 +84,7 @@ M.cleanup_should_clear_all_review_namespaces_and_preserve_unrelated_marks_when_b
     local buffer = helpers.main_buffer(view)
     buffers[#buffers + 1] = buffer
     vim.api.nvim_buf_set_extmark(buffer, unrelated, 0, 0, {})
-    view:update_review_comments({ { id = path, file_id = path, body = 'note', status = 'open' } })
+    view:update_review_comments({ { comment_id = path, file_id = path, body = 'note', status = 'open' } })
     assert(#vim.api.nvim_buf_get_extmarks(buffer, view.comment_namespace, 0, -1, {}) == 1)
     assert(#vim.api.nvim_buf_get_extmarks(buffer, view.side_by_side.namespace, 0, -1, {}) == 1)
   end
@@ -117,7 +117,7 @@ M.comment_text_matches_should_reject_replaced_buffers_when_review_window_remains
   vim.api.nvim_win_set_buf(window, replacement)
   assert(not view:comment_text_matches('file', 'current', {}))
   assert(view:comment_context() == nil)
-  assert(not view:focus_comment({ id = 'note', file_id = 'file', body = 'note', status = 'open' }))
+  assert(not view:focus_comment({ comment_id = 'note', file_id = 'file', body = 'note', status = 'open' }))
   view:cleanup()
   if vim.api.nvim_buf_is_valid(replacement) then
     vim.api.nvim_buf_delete(replacement, { force = true })

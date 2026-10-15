@@ -18,19 +18,19 @@ local function with_records(run)
     local progress = review_progress.reconcile(nil, loaded)
     progress.comments = {
       {
-        id = 'first',
+        comment_id = 'first',
         file_id = 'stored:file.txt',
         body = 'first',
         status = 'open',
       },
       {
-        id = 'second',
+        comment_id = 'second',
         file_id = 'stored:file.txt',
         body = 'second',
         status = 'open',
       },
       {
-        id = 'stale',
+        comment_id = 'stale',
         file_id = 'stored:missing.txt',
         body = 'stale note',
         status = 'stale',
@@ -71,13 +71,13 @@ M.edit_comment_by_id_should_focus_edit_and_delete_record_when_id_is_known = func
     assert(vim.deep_equal(vim.api.nvim_buf_get_lines(buffer, 0, -1, false), { 'unsaved first' }))
     save('first saved')
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
-    assert(saved.comments[1].id == 'first' and saved.comments[1].body == 'first saved')
+    assert(saved.comments[1].comment_id == 'first' and saved.comments[1].body == 'first saved')
     assert(session:edit_comment_by_id('second'))
     assert(not vim.api.nvim_buf_is_valid(buffer))
     assert(vim.deep_equal(vim.api.nvim_buf_get_lines(0, 0, -1, false), { 'second' }))
     save('')
     saved = assert(storage.load(loaded.storage_path, loaded.identity))
-    assert(#saved.comments == 2 and saved.comments[1].id == 'first' and saved.comments[2].id == 'stale')
+    assert(#saved.comments == 2 and saved.comments[1].comment_id == 'first' and saved.comments[2].comment_id == 'stale')
   end)
 end
 
@@ -94,7 +94,7 @@ M.edit_comment_by_id_should_accept_stale_record_without_navigation_and_reject_ob
     assert(vim.api.nvim_get_current_tabpage() == review_tab)
     save('stale edited')
     local saved = assert(storage.load(loaded.storage_path, loaded.identity))
-    assert(saved.comments[3].id == 'stale' and saved.comments[3].body == 'stale edited')
+    assert(saved.comments[3].comment_id == 'stale' and saved.comments[3].body == 'stale edited')
     assert(saved.comments[3].status == 'stale')
     session:stop()
     local buffers = vim.api.nvim_list_bufs()

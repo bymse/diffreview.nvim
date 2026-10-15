@@ -7,7 +7,7 @@ M.update_review_comments_should_preserve_active_files_when_comments_are_inactive
   local view = ui.get_ui(handlers)
   view:show_review_files({ { id = 'file', display_path = 'file', added_lines = 1, removed_lines = 0, viewed = false } })
   local files = vim.fn.getqflist({ id = 0 }).id
-  local records = { { id = 'note', file_id = 'file', body = 'preview', status = 'resolved' } }
+  local records = { { comment_id = 'note', file_id = 'file', body = 'preview', status = 'resolved' } }
   view:update_review_comments(records)
   assert(vim.fn.getqflist({ id = 0 }).id == files and view:files_open())
   view:show_review_comments(records)

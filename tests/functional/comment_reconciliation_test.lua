@@ -29,7 +29,7 @@ M.review_commands_should_preserve_fixed_comments_when_text_moves_disappears_and_
     assert(result.ok and loaded)
     local progress = review_progress.reconcile(nil, loaded)
     progress.comments[1] = {
-      id = 'current-saved-note',
+      comment_id = 'current-saved-note',
       file_id = 'stored:file.txt',
       body = 'current saved body',
       status = 'open',
@@ -38,7 +38,7 @@ M.review_commands_should_preserve_fixed_comments_when_text_moves_disappears_and_
       anchor_hash = vim.fn.sha256('anchor\nrange'),
     }
     progress.comments[#progress.comments + 1] = {
-      id = 'saved-file-note',
+      comment_id = 'saved-file-note',
       file_id = 'stored:file.txt',
       body = 'saved file body',
       status = 'open',

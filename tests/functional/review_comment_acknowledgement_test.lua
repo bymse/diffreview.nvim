@@ -22,7 +22,7 @@ M.review_comment_should_acknowledge_fixed_range_when_unchanged_editor_is_written
       return saved().comments[1].status == 'open'
     end))
     local record = saved().comments[1]
-    assert(record.id == original.id and record.body == original.body)
+    assert(record.comment_id == original.comment_id and record.body == original.body)
     assert(record.start_line == 2 and record.end_line == 3)
     assert(record.anchor_hash == vim.fn.sha256('replacement\nchanged'))
     assert(#vim.fn.win_findbuf(buffer) == 0)
