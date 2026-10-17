@@ -5,3 +5,4 @@
 - [ ] Cleanup review scratch buffers on close/review quit
 - [ ] Show letter in quickfix to denote file change type 
 - [ ] Allow parallel reviews in different dirs
+- [ ] Allow comments on any file in the review project, including unchanged files outside the diff list
