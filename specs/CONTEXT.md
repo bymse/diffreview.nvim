@@ -35,6 +35,7 @@ Excluded: lifecycle/controller wiring, persistence, new commands or key mappings
 - `lua/diffreview/ui/side_by_side.lua`: `display_side_by_side`, `cleanup`, and `clear`; chooses main/companion buffers, knows their actual source-side roles, and owns presentation transitions. Main is old for deleted files, current for normal source views, and neither for information views.
 - `lua/diffreview/ui/scratch_buffer.lua`: `snapshot` and `information`; instance-tagged, unlisted, no-swap virtual buffers. They are locked `nofile` projections, not writable editor buffers; evaluate ownership conventions without weakening their behavior.
 - `lua/diffreview/ui/decorations.lua`: added/deleted diff-line extmarks and namespace-wide clear. Comments need a separate namespace so clearing them cannot clear diff highlights.
+- `lua/diffreview/ui/comment_decorations.lua`: explicit caller-supplied comment projection, pane association validation, virtual-line rendering, and per-instance namespace cleanup; no collection or controller calls.
 - `lua/diffreview/ui/native_diff.lua`: window-local native diff setup and option restoration. Comment-editor splits must not join or disturb the two source windows' native diff state.
 - `lua/diffreview/ui/quickfix.lua`: native review file drawer and supplied file IDs. Reuse the public file-list UI for fixtures; add no comment-target lookup or bindings here.
 - `lua/diffreview/diff_view_model.lua`: `ChangedFileViewModel`, `DiffViewModel`, source/version/content types. `ChangedFileViewModel.id` is separate from `DiffViewModel`, which has no file ID.
@@ -46,8 +47,10 @@ Excluded: lifecycle/controller wiring, persistence, new commands or key mappings
 - `tests/unit/comments/validation_tests.lua`, `mutations_tests.lua`, `resolution_tests.lua`, and `isolation_tests.lua`: focused public collection contracts. Update the existing rejection of an omitted side with no range.
 - `tests/integration/comments/targets_tests.lua` and `lifecycle_tests.lua`: public collection behavior against real Git-loaded diffs, including path-backed versus snapshot targets.
 - `tests/integration/ui/side_by_side/`: operation-specific rendering and transition coverage; `helpers.lua` provides established UI fixture cleanup. Existing extmark inspection uses `nvim_buf_get_extmarks` with details.
+- `tests/integration/ui/comments/`: public facade projection, target/source-role, and ownership cleanup tests; local helpers inspect real source panes and virtual-line extmarks.
 - `tests/helpers/diff_view_model.lua`, `git_repo.lua`, and `ui_handlers.lua`: shared diff constructors, real temporary repositories, and required UI callbacks.
 - `tests/functional/review_tab_lifecycle_test.lua` and `tests/helpers/functional_review.lua`: native editor interactions, window/tab observations, and repository cleanup patterns. New comment flows call the UI facade directly because controller wiring is excluded.
+- `tests/functional/comment_tab_cleanup_test.lua`: native tab-close comment cleanup through the public UI facade with a notification-only handler and a real borrowed Git-backed buffer.
 - `tests/unit/init.lua`, `tests/integration/init.lua`, and `tests/functional/init.lua`: explicit test-module registries; new modules must be registered.
 - `justfile`, `scripts/lint.lua`, and `tests/run.lua`: pinned Neovim runner, LuaLS, formatting, and test categories.
 

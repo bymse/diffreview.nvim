@@ -139,9 +139,12 @@ end
 ---@param ui ReviewUi
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
+---@param file_id string|nil
 ---@return nil
-function M.display_side_by_side(ui, diff, layout)
+function M.display_side_by_side(ui, diff, layout, file_id)
+  ui:clear_comments()
   local state = ui.side_by_side
+  state.presentation = nil
   local instance_id = ui.instance_id
   local will_use_two_windows = is_reserved_two_window(diff) and not has_binary_version(diff)
   local active_window_lost = state.native_diff.active
@@ -160,6 +163,8 @@ function M.display_side_by_side(ui, diff, layout)
 
   local buffer
   local old_buffer
+  local main_side
+  local main_content
   if
     diff.operation == 'error'
     or diff.operation == 'type_changed'
@@ -174,12 +179,20 @@ function M.display_side_by_side(ui, diff, layout)
     )
     state.information_buffer = buffer
   elseif diff.operation == 'added' or diff.operation == 'untracked' then
+    main_side = 'current'
+    main_content = diff.current.content
     buffer = main_content_buffer(state, diff.current.content, instance_id)
   elseif diff.operation == 'deleted' then
+    main_side = 'old'
+    main_content = diff.old.content
     buffer = main_content_buffer(state, diff.old.content, instance_id)
   elseif diff.operation == 'unmerged' then
+    main_side = 'current'
+    main_content = diff.current.content
     buffer = main_content_buffer(state, diff.current.content, instance_id)
   else
+    main_side = 'current'
+    main_content = diff.current.content
     buffer = main_content_buffer(state, diff.current.content, instance_id)
     if will_use_two_windows then
       local old_content = diff.old.content
@@ -204,13 +217,32 @@ function M.display_side_by_side(ui, diff, layout)
     state.decorated_buffer = buffer
   end
   state.active_layout = layout
+  local panes = {
+    {
+      window = state.main_window,
+      buffer = buffer,
+      side = main_side,
+      snapshot_line_count = main_content and main_content.source == 'snapshot' and #main_content.lines or nil,
+    },
+  }
+  if old_buffer ~= nil then
+    table.insert(panes, {
+      window = state.companion_window,
+      buffer = old_buffer,
+      side = 'old',
+      snapshot_line_count = #diff.old.content.lines,
+    })
+  end
+  state.presentation = { diff = vim.deepcopy(diff), file_id = file_id, panes = panes }
   vim.api.nvim_set_current_win(state.main_window)
 end
 
 ---@param ui ReviewUi
 ---@return nil
 function M.cleanup(ui)
+  ui:clear_comments()
   local state = ui.side_by_side
+  state.presentation = nil
   local instance_id = ui.instance_id
   local active_window_lost = state.native_diff.active
     and (

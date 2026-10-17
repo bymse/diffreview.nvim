@@ -2,9 +2,22 @@ local quickfix = require('diffreview.ui.quickfix')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
+local comment_decorations = require('diffreview.ui.comment_decorations')
 local M = {}
 
+---@class ReviewSourcePane
+---@field window integer
+---@field buffer integer
+---@field side ReviewCommentSide|nil
+---@field snapshot_line_count integer|nil
+
+---@class ReviewPresentation
+---@field diff DiffViewModel
+---@field file_id string|nil
+---@field panes ReviewSourcePane[] Main pane first.
+
 ---@class ReviewSideBySideState
+---@field presentation ReviewPresentation|nil
 ---@field namespace integer
 ---@field main_window integer|nil
 ---@field companion_window integer|nil
@@ -27,6 +40,8 @@ local M = {}
 ---@field handlers ReviewUiHandlers|nil
 ---@field tab_closed_autocmd integer|nil
 ---@field tab_acquired boolean
+---@field comment_namespace integer
+---@field comment_buffers table<integer, boolean>
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
@@ -46,6 +61,8 @@ local function acquire_tab(self)
           vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
           self.tab_closed_autocmd = nil
           self.tabpage = nil
+          self:clear_comments()
+          self.side_by_side.presentation = nil
           local handlers = self.handlers
           if handlers ~= nil then
             handlers.on_tab_closed()
@@ -142,17 +159,20 @@ end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
+---@param file_id string|nil
 ---@return nil
-function ReviewUi:refresh_selected_diff(diff, layout)
-  self:display_diff_side_by_side(diff, layout, true)
+function ReviewUi:refresh_selected_diff(diff, layout, file_id)
+  self:display_diff_side_by_side(diff, layout, true, file_id)
 end
 
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
 ---@param keep_drawer boolean|nil
+---@param file_id string|nil
 ---@return nil
-function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
+function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer, file_id)
   validator.validate(diff)
+  assert(file_id == nil or (type(file_id) == 'string' and file_id ~= ''), 'file ID must be a nonempty string')
   if layout ~= 'horizontal' and layout ~= 'vertical' then
     error('Invalid view layout: ' .. tostring(layout))
   end
@@ -161,8 +181,20 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
     if not keep_drawer then
       quickfix.close_drawer(self.quickfix_id, self.instance_id)
     end
-    side_by_side.display_side_by_side(self, diff, layout)
+    side_by_side.display_side_by_side(self, diff, layout, file_id)
   end)
+end
+
+---@param file_id string
+---@param comments ReviewComment[]
+---@return boolean, string|nil
+function ReviewUi:show_comments(file_id, comments)
+  return comment_decorations.show(self, file_id, comments)
+end
+
+---@return nil
+function ReviewUi:clear_comments()
+  comment_decorations.clear(self)
 end
 
 ---@param diff DiffViewModel
@@ -208,6 +240,8 @@ function M.get_ui(handlers)
   next_instance_id = next_instance_id + 1
   return setmetatable({
     instance_id = next_instance_id,
+    comment_namespace = vim.api.nvim_create_namespace('diffreview.comments.' .. next_instance_id),
+    comment_buffers = {},
     tabpage = nil,
     tab_closed_autocmd = nil,
     tab_acquired = false,
