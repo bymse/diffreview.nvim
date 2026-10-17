@@ -21,3 +21,13 @@ Impact: Projection and future editor validation must use captured actual panes, 
 Use in future specs: `display_diff_side_by_side` accepts optional fourth file ID, refresh optional third; omission resets association. `clear_comments` preserves association while presentation transitions invalidate it. Editor drafts must remain captured across those transitions and must not redraw projections automatically or save stale-clamped coordinates. Native editor-command journeys belong in functional tests; integration tests use facade methods. Establish owned resources before cleanup assertions to avoid vacuous tests.
 
 Source: `.agent-runs/002/learnings-draft.md`; spec 002 judge repair and independent verification.
+
+## 2026-10-17 — Native comment-editor lifecycle
+
+Finding: A writable acwrite split can hide modified content on ordinary quit when global hiding is enabled. A temporary buffer-local unload policy at QuitPre requests native modified-buffer protection; restoring it at BufLeave preserves immediate non-discarding hiding after a rejected quit. BufWinLeave is too late. Actual native unload remains distinct from retained modified hiding and releases discarded resources.
+
+Impact: Native write errors must propagate from BufWriteCmd to abort write-quit. Clean native close cleanup is deferred until Neovim finishes closing; explicit API close and teardown discard synchronously. No global option changes are required.
+
+Use in future specs: Preserve the quit/immediate-hide/reopen/forced-quit regression and pinned-editor verification. Same-target reuse precedes replacement-payload and presentation checks. Check both historical window ownership and the currently displayed buffer during source-window recovery; a comment-editor buffer never becomes a source pane. Reuse `comment_decorations.source_line_count` for displayed-source validation, and keep save handlers per request with explicit projection refresh.
+
+Source: `.agent-runs/003/learnings-draft.md`, delegated native event traces, final 335-test verification and judge review.

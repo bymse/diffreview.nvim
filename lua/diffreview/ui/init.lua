@@ -3,6 +3,7 @@ local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
 local comment_decorations = require('diffreview.ui.comment_decorations')
+local comment_editor = require('diffreview.ui.comment_editor')
 local M = {}
 
 ---@class ReviewSourcePane
@@ -42,6 +43,7 @@ local M = {}
 ---@field tab_acquired boolean
 ---@field comment_namespace integer
 ---@field comment_buffers table<integer, boolean>
+---@field comment_editor ReviewCommentEditor|nil
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
@@ -61,6 +63,7 @@ local function acquire_tab(self)
           vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
           self.tab_closed_autocmd = nil
           self.tabpage = nil
+          self:close_comment_editor(true)
           self:clear_comments()
           self.side_by_side.presentation = nil
           local handlers = self.handlers
@@ -197,6 +200,23 @@ function ReviewUi:clear_comments()
   comment_decorations.clear(self)
 end
 
+---@param options ReviewCommentEditorOptions
+---@return integer|nil, string|nil
+function ReviewUi:open_comment_editor(options)
+  return comment_editor.open(self, options)
+end
+
+---@return boolean, string|nil
+function ReviewUi:write_comment_editor()
+  return comment_editor.write(self)
+end
+
+---@param force boolean|nil
+---@return boolean, string|nil
+function ReviewUi:close_comment_editor(force)
+  return comment_editor.close(self, force)
+end
+
 ---@param diff DiffViewModel
 ---@return nil
 function ReviewUi:display_diff_inlinde(diff) end
@@ -204,6 +224,11 @@ function ReviewUi:display_diff_inlinde(diff) end
 ---@return nil
 function ReviewUi:cleanup()
   self.handlers = nil
+  local previous_window = vim.api.nvim_get_current_win()
+  self:close_comment_editor(true)
+  if vim.api.nvim_win_is_valid(previous_window) then
+    vim.api.nvim_set_current_win(previous_window)
+  end
   if self.tab_closed_autocmd ~= nil then
     vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
     self.tab_closed_autocmd = nil

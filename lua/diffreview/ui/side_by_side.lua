@@ -8,6 +8,13 @@ local M = {}
 
 local owner_variable = 'diffreview_side_by_side_owner'
 
+---@param window integer
+---@return boolean
+local function is_comment_editor(window)
+  local ok = pcall(vim.api.nvim_buf_get_var, vim.api.nvim_win_get_buf(window), 'diffreview_comment_editor_owner')
+  return ok
+end
+
 ---@param resource integer
 ---@param getter fun(integer, string): any
 ---@param instance_id integer
@@ -22,7 +29,10 @@ end
 ---@param instance_id integer
 ---@return boolean
 local function has_owned_window(state, window, instance_id)
-  return window ~= nil and vim.api.nvim_win_is_valid(window) and is_owned(window, vim.api.nvim_win_get_var, instance_id)
+  return window ~= nil
+    and vim.api.nvim_win_is_valid(window)
+    and not is_comment_editor(window)
+    and is_owned(window, vim.api.nvim_win_get_var, instance_id)
 end
 
 ---@param state ReviewSideBySideState
@@ -54,12 +64,13 @@ local function ensure_review_window(state, instance_id, layout)
     if has_owned_window(state, state.companion_window, instance_id) then
       local split = layout == 'vertical' and 'right' or 'below'
       state.main_window = vim.api.nvim_open_win(0, true, { win = state.companion_window, split = split })
-    elseif state.main_window == nil then
+    elseif state.main_window == nil and not is_comment_editor(vim.api.nvim_get_current_win()) then
       local anchor = vim.api.nvim_get_current_win()
       state.main_window = anchor
     else
       local anchor = vim.api.nvim_get_current_win()
-      state.main_window = vim.api.nvim_open_win(0, true, { win = anchor, split = 'below' })
+      local split = is_comment_editor(anchor) and 'above' or 'below'
+      state.main_window = vim.api.nvim_open_win(0, true, { win = anchor, split = split })
     end
     vim.api.nvim_win_set_var(state.main_window, owner_variable, instance_id)
   end

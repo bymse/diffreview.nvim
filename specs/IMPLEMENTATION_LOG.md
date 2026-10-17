@@ -54,3 +54,30 @@ Important decisions:
 
 Follow-up risks:
 - None blocking. Editor/save behavior remains for spec 003.
+
+## 003 — 2026-10-17
+
+Status: PASS
+
+Changed files:
+- New `lua/diffreview/ui/comment_editor.lua`; `lua/diffreview/ui/init.lua`, `side_by_side.lua`, `comment_decorations.lua`
+- `tests/integration/ui/comments/{editor_tests,saving_tests,editor_lifecycle_tests}.lua`, `tests/integration/init.lua`
+- `tests/functional/{comment_editor_write_test,comment_editor_lifecycle_test}.lua`, `tests/functional/init.lua`
+- `specs/003-comment-editor.md`, `specs/CONTEXT.md`, durable learning and execution records.
+
+Verification:
+- Final independent test-runner: `just lint`, `just format`, `just format-check`, `just test`, `git diff --check`; each exited 0.
+- 335 tests passed: 68 unit, 201 integration, 66 functional; no failures or skips.
+- Logs: `.artifacts/003-repair2-independent-*.txt`; evidence: `.agent-runs/003/evidence.md`.
+- Two earlier verification failures isolated native ordinary-quit and immediate-hide ownership. Delegated real-editor traces identified BufLeave restoration ordering; final suite includes the strengthened regression.
+
+Judge result:
+- PASS; compliance/architecture/simplicity 5, tests/regression/maintainability 4; session `ses_eb702fa89ffey7Da9z34GnVEyj`.
+
+Important decisions:
+- Gap review clarified same-target reuse precedence, native forced-quit discard, caller-owned whole-file provenance, and editor-safe source-window recovery; same reviewer approved patches before implementation.
+- Use a separately owned native acwrite buffer, synchronous caller save handler, immutable captured target/identity, and buffer-local lifecycle handling.
+- Restore temporary quit hiding policy at BufLeave; propagate native write errors so failed write-quit preserves drafts.
+
+Follow-up risks:
+- None blocking. All specs are complete with independent verification and quality review.

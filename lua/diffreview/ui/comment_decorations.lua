@@ -13,7 +13,7 @@ end
 
 ---@param pane ReviewSourcePane
 ---@return integer
-local function source_line_count(pane)
+function M.source_line_count(pane)
   if pane.snapshot_line_count ~= nil then
     return pane.snapshot_line_count
   end
@@ -50,7 +50,7 @@ function M.show(ui, file_id, comments)
   end
   M.clear(ui)
   for index, pane in ipairs(presentation.panes) do
-    local count = source_line_count(pane)
+    local count = M.source_line_count(pane)
     local groups = {}
     for _, comment in ipairs(comments) do
       local target = comment.target

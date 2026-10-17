@@ -40,11 +40,12 @@ Implement opening/validation in `lua/diffreview/ui/comment_editor.lua`, using th
 
 - Require nonempty file ID and display path, a handler, and a well-formed target: both endpoints absent for whole-file targets; both valid endpoints and old/current side for line/range targets. Invalid side values and partial ranges are rejected before replacing any draft.
 - New line/range targets must match the explicitly associated displayed file and an actual displayed source side, with endpoints within its source lines. Path-backed text is allowed; information rows and artificial empty-snapshot rows are not source targets.
-- Whole-file requests may omit the side and may come from a supplied review quickfix entry before any diff is selected. They need no source-pane lookup or content load. The caller is responsible for supplying that entry's file identity and an available side when specifying one.
+- Whole-file requests may omit the side and may come from a supplied review quickfix entry before any diff is selected. They need no source-pane lookup or content load. Membership in the opened review diff/list and availability of an explicitly supplied side are caller preconditions, not new UI membership checks or quickfix inference.
 - For existing comments, require agreement between the supplied target and record target and preload the body/identity. Preserve original stale targets when editing rather than applying display clamping to saved coordinates.
 - Capture the originating window from `origin_window` or the current window; require a valid origin in this UI's review tab. Return focus to it on successful close if it still exists; otherwise leave a surviving review window focused without recreating the origin.
 - Copy input data and callback request targets so caller mutation cannot retarget a draft. Once open, changing the selected diff cannot change the draft's target or saved identity.
 - Reopening the same target focuses its existing editor and retains its body, existing identity, handler, and origin instead of reloading supplied data. Opening a different target refuses while the existing draft is modified; an unmodified editor may be replaced. These rules also apply if the owned draft buffer survives after its window is hidden or closed.
+- Validate the options container and target shape first. Once that target matches a surviving owned draft, reuse it without validating against the current presentation or checking replacement display path, comment, handler, or origin payloads; those fields are ignored in favor of captured values. This also applies after a diff switch or loss of the original source/origin window. New or different targets undergo all request validation before replacement.
 
 ### 3. Create the native writable virtual-file editor
 
@@ -73,7 +74,11 @@ Modify `ReviewUi:cleanup` and owned-tab closure handling in `lua/diffreview/ui/i
 
 For ordinary native close/hide, preserve modified-buffer protection and never silently delete a retained modified draft. Explicit forced close/discard may remove it without calling the handler. A clean successful close releases owned editor resources and returns origin focus. Manually lost windows/buffers must not leave callbacks attached to unrelated replacement resources.
 
+Native `:q!` is an explicit discard: release that editor's draft and resources without invoking the handler. Reopening its target starts a fresh draft from the new request. This differs from non-discarding window hiding, which retains a surviving modified owned buffer for same-target reuse.
+
 Diff display/refresh/clear continues clearing annotations, but does not dispose of or retarget an open editor. Refresh deferral is excluded. If the editor's original source pane disappears, saves still address the captured target and close tolerates the missing origin. Preserve borrowed file buffers, quickfix entries, and native diff state throughout.
+
+Evaluate and, where needed, modify `lua/diffreview/ui/side_by_side.lua` window recovery so it never adopts an editor window as a replacement source pane. Display retains its existing focus behavior, and an editor draft survives source-pane loss and a later display while the editor was focused.
 
 ### 6. Add focused integration and functional coverage
 
@@ -83,9 +88,13 @@ Create these integration modules under `tests/integration/ui/comments/` and regi
 - `tests/integration/ui/comments/saving_tests.lua`: public programmatic writes, exact text requests, returned identity propagation, repeated saves, blank/delete behavior, failures/retries, and no automatic annotation refresh.
 - `tests/integration/ui/comments/editor_lifecycle_tests.lua`: public close/force behavior, diff-switch target stability, missing origins, and explicit/tab/native-resource cleanup.
 
+Include public-interface regression coverage that modifies an editor, loses a source pane, displays another diff while the editor is focused, then verifies the preserved draft saves to its captured target. Reopening that same target after the switch must retain the original handler, origin, identity, and body without current-presentation validation.
+
 Evaluate reuse of `tests/integration/ui/comments/helpers.lua` from spec 002 and existing real Git/UI fixtures. Supply callbacks as real implementations of the intended API; capture their requests/results without replacing modules, Neovim APIs, or notifications. Integration tests call the new open/write/close methods rather than simulating user keys or commands.
 
 Create `tests/functional/comment_editor_write_test.lua` and `tests/functional/comment_editor_lifecycle_test.lua`; register them in `tests/functional/init.lua`. Use real editor commands for native `:w`, `:wq`, ordinary quit, and forced quit behavior, with fixtures that create the UI facade directly. Existing `tests/helpers/functional_review.lua` is a reference for setup/cleanup, but starting a controller-connected comment flow or adding production bindings is not required. Inspect actual buffers, windows, callbacks, modified flags, messages, and surviving source panes; do not assert exact incidental diagnostic wording.
+
+Functional forced-quit coverage must assert `:q!` invokes no handler, releases the discarded draft, and a later open creates a fresh draft. Keep the public API force-close coverage separately in integration tests.
 
 ## Verification
 
