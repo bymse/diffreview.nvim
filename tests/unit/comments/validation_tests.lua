@@ -78,7 +78,9 @@ M.add_should_leave_records_unchanged_when_text_targets_or_ranges_are_invalid = f
   for _, side in ipairs({ '', 'new', 'OLD', false, 3, {} }) do
     reject({ file_id = 'file', side = side, text = 'text' })
   end
-  reject({ file_id = 'file', text = 'text' })
+  local whole = assert(review:add({ file_id = 'file', text = 'text' }, diff))
+  assert(vim.deep_equal(whole.target, { file_id = 'file' }))
+  before = assert(review:list())
   for _, range in ipairs({
     { line_start = 1 },
     { line_end = 1 },

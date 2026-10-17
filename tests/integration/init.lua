@@ -1,6 +1,7 @@
 return {
   'integration.comments.lifecycle_tests',
   'integration.comments.targets_tests',
+  'integration.comments.file_targets_tests',
   'integration.git.diff_tests',
   'integration.git.load_blob_tests',
   'integration.git.ls_files_tests',
