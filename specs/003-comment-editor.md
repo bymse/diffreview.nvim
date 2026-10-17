@@ -16,7 +16,7 @@ Read `specs/CONTEXT.md`. The editor accepts targets and callback implementations
 
 ### 1. Pin the public editor and save contracts
 
-Add public methods and state ownership in `lua/diffreview/ui/init.lua`, delegating implementation and editor-specific public types to new `lua/diffreview/ui/comment_editor.lua`.
+Add public methods and state ownership in `lua/diffreview/ui/init.lua`, delegating implementation and editor-specific public types to `lua/diffreview/ui/comments/editor.lua`.
 
 - `ReviewUi:open_comment_editor(options)` takes `ReviewCommentEditorOptions` and returns `integer|nil, string|nil`: the editable buffer on success or nil with a nonempty error. It opens/focuses the editor in the existing review tab.
 - `ReviewUi:write_comment_editor()` takes no parameters and returns `boolean, string|nil`. This is the programmatic write interface used by integration tests and the native write handler; it saves without closing and returns false/error when no draft exists.
@@ -36,7 +36,7 @@ For a save request, `text` is the exact nonblank body and the success result mus
 
 ### 2. Validate explicit requests and preserve target identity
 
-Implement opening/validation in `lua/diffreview/ui/comment_editor.lua`, using the presentation association from spec 002 for new source-range targets.
+Implement opening/validation in `lua/diffreview/ui/comments/editor.lua`, using the presentation association from spec 002 for new source-range targets.
 
 - Require nonempty file ID and display path, a handler, and a well-formed target: both endpoints absent for whole-file targets; both valid endpoints and old/current side for line/range targets. Invalid side values and partial ranges are rejected before replacing any draft.
 - New line/range targets must match the explicitly associated displayed file and an actual displayed source side, with endpoints within its source lines. Path-backed text is allowed; information rows and artificial empty-snapshot rows are not source targets.
@@ -49,7 +49,7 @@ Implement opening/validation in `lua/diffreview/ui/comment_editor.lua`, using th
 
 ### 3. Create the native writable virtual-file editor
 
-Use native Neovim buffers/splits in `lua/diffreview/ui/comment_editor.lua`, evaluating instance tagging and virtual naming in `lua/diffreview/ui/scratch_buffer.lua` without changing its read-only projections.
+Use native Neovim buffers/splits in `lua/diffreview/ui/comments/editor.lua`, evaluating instance tagging and virtual naming in `lua/diffreview/ui/scratch_buffer.lua` without changing its read-only projections.
 
 - Use a distinct instance-owned, unlisted, swapless virtual buffer, with an identifying `diffreview://` name and `acwrite`-style native write handling. Create no backing temporary file.
 - Open one bottom horizontal split and focus it without replacing either source pane or the quickfix buffer. Keep it out of native diff mode and preserve the source windows' diff settings/layout.
@@ -59,7 +59,7 @@ Use native Neovim buffers/splits in `lua/diffreview/ui/comment_editor.lua`, eval
 
 ### 4. Implement save, deletion, and native write failure behavior
 
-Route `write_comment_editor` and native `:write` through one save operation in `lua/diffreview/ui/comment_editor.lua`.
+Route `write_comment_editor` and native `:write` through one save operation in `lua/diffreview/ui/comments/editor.lua`.
 
 - A nonblank body sends a `save` request. New drafts omit `comment_id`; successful creation records the returned identity. Later saves supply the latest identity, including when the caller chooses a different resulting identity.
 - Success marks the draft unmodified only after the handler succeeds. Keep the editor open for `:w`; do not refresh annotations unless the caller separately invokes the projection API.
@@ -80,7 +80,7 @@ Diff display/refresh/clear continues clearing annotations, but does not dispose 
 
 Evaluate and, where needed, modify `lua/diffreview/ui/side_by_side.lua` window recovery so it never adopts an editor window as a replacement source pane. Display retains its existing focus behavior, and an editor draft survives source-pane loss and a later display while the editor was focused.
 
-### 6. Add focused integration and functional coverage
+### 6. Add focused integration coverage
 
 Create these integration modules under `tests/integration/ui/comments/` and register them in `tests/integration/init.lua`:
 
@@ -92,15 +92,13 @@ Include public-interface regression coverage that modifies an editor, loses a so
 
 Evaluate reuse of `tests/integration/ui/comments/helpers.lua` from spec 002 and existing real Git/UI fixtures. Supply callbacks as real implementations of the intended API; capture their requests/results without replacing modules, Neovim APIs, or notifications. Integration tests call the new open/write/close methods rather than simulating user keys or commands.
 
-Create `tests/functional/comment_editor_write_test.lua` and `tests/functional/comment_editor_lifecycle_test.lua`; register them in `tests/functional/init.lua`. Use real editor commands for native `:w`, `:wq`, ordinary quit, and forced quit behavior, with fixtures that create the UI facade directly. Existing `tests/helpers/functional_review.lua` is a reference for setup/cleanup, but starting a controller-connected comment flow or adding production bindings is not required. Inspect actual buffers, windows, callbacks, modified flags, messages, and surviving source panes; do not assert exact incidental diagnostic wording.
-
-Functional forced-quit coverage must assert `:q!` invokes no handler, releases the discarded draft, and a later open creates a fresh draft. Keep the public API force-close coverage separately in integration tests.
+Functional tests must use the plugin's public API, not construct the internal UI facade. Defer native write/quit/tab-close functional coverage until comments are exposed through that API. Keep module-interface open/write/close coverage in integration tests.
 
 ## Verification
 
 - **Normal save journey:** Open an explicit range on a displayed diff through `open_comment_editor`, edit the returned buffer, and call `write_comment_editor`. Assert one save request with the exact file/side/range/body, an unmodified still-open editor, and subsequent writes using the returned identity rather than creating again.
 - **Whole-file quickfix journey:** Show review files, open a side-less whole-file editor from its explicitly supplied entry while the drawer is focused and no diff is selected, save, and close. Assert the side remains absent, the drawer/entries survive, and focus returns to the origin.
-- **Native write journey:** Functional tests prove `:w` keeps the editor open, successful `:wq` closes it and returns origin focus, and failed save/delete or thrown-handler errors abort `:wq` with unchanged draft text/identity and a protected modified buffer. A retry succeeds without duplicate creation/deletion.
+- **Future native write journey:** Once comments are exposed through the plugin's public API, functional tests should verify successful and failed `:w`/`:wq`, retries, ordinary quit protection, forced discard, and tab-close cleanup.
 - **Deletion journey:** Blank an existing comment and write; assert one deletion request and an identity-free blank draft. Writing a blank new draft creates nothing; entering text after successful deletion creates a new identity.
 - **Ownership journey:** Demonstrate refusal to replace/close modified drafts without force, same-target reuse, stable saves after a diff switch, missing-origin tolerance, and teardown without handler calls or damage to source buffers, quickfix, or diff state.
-- **Gates:** Run `just lint`, `just format`, and `just format-check` in that order. Have the `test-runner` agent run `just test`. All suites must pass, with native write failure/quit behavior verified functionally rather than inferred from callback-return tests.
+- **Gates:** Run `just lint`, `just format`, and `just format-check` in that order. Have the `test-runner` agent run `just test`. All registered suites must pass; module-interface tests do not establish native write/quit behavior.

@@ -2,8 +2,8 @@ local quickfix = require('diffreview.ui.quickfix')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
-local comment_decorations = require('diffreview.ui.comment_decorations')
-local comment_editor = require('diffreview.ui.comment_editor')
+local comment_decorations = require('diffreview.ui.comments.decorations')
+local comment_editor = require('diffreview.ui.comments.editor')
 local M = {}
 
 ---@class ReviewSourcePane
@@ -13,7 +13,6 @@ local M = {}
 ---@field snapshot_line_count integer|nil
 
 ---@class ReviewPresentation
----@field diff DiffViewModel
 ---@field file_id string|nil
 ---@field panes ReviewSourcePane[] Main pane first.
 

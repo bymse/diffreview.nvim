@@ -1,4 +1,4 @@
-local source = require('diffreview.ui.comment_decorations')
+local source = require('diffreview.ui.comments.decorations')
 local M = {}
 
 ---@class ReviewCommentSaveRequest

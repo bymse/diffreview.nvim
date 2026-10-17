@@ -244,7 +244,7 @@ function M.display_side_by_side(ui, diff, layout, file_id)
       snapshot_line_count = #diff.old.content.lines,
     })
   end
-  state.presentation = { diff = vim.deepcopy(diff), file_id = file_id, panes = panes }
+  state.presentation = { file_id = file_id, panes = panes }
   vim.api.nvim_set_current_win(state.main_window)
 end
 

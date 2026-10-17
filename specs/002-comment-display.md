@@ -21,13 +21,13 @@ Modify `lua/diffreview/ui/init.lua` at `ReviewUi:display_diff_side_by_side`, `re
 - Extend `ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer?, file_id?)` with an optional fourth `file_id: string|nil` argument. Existing positional arguments and callers retain their behavior.
 - Extend `ReviewUi:refresh_selected_diff(diff, layout, file_id?)` with an optional third file ID and forward it to display. Both methods keep their existing nil return.
 - A provided ID must be a nonempty string. An omitted ID leaves that presentation unassociated for comment APIs; do not infer it from a path or carry the previous file's identity into a fresh display.
-- Track the displayed diff, explicit identity, and actual main/companion buffer/window source roles. Main is old for deleted text, current for normal source views, and has no source side for information views. A missing companion is not a displayed old side, even if the diff model contains old content.
+- Track the explicit file identity and actual main/companion buffer/window source roles; do not retain the diff model. Main is old for deleted text, current for normal source views, and has no source side for information views. A missing companion is not a displayed old side, even if the diff model contains old content.
 - Distinguish real source-line counts from Neovim's artificial first row for an empty snapshot. Path-backed source bounds use the displayed buffer's lines.
 - Clear prior comment projections and identity/pane associations on presentation replacement, refresh, clear, and cleanup. Do not change native diff layouts or existing file highlighting.
 
 ### 2. Add the public comment projection API
 
-Add `ReviewUi:show_comments(file_id, comments)` and `ReviewUi:clear_comments()` in `lua/diffreview/ui/init.lua`, with LuaLS signatures and delegation to a new `lua/diffreview/ui/comment_decorations.lua` module.
+Add `ReviewUi:show_comments(file_id, comments)` and `ReviewUi:clear_comments()` in `lua/diffreview/ui/init.lua`, with LuaLS signatures and delegation to `lua/diffreview/ui/comments/decorations.lua`.
 
 - `show_comments` parameters are `file_id: string` and `comments: ReviewComment[]`; return `boolean, string|nil`. Success replaces the entire comment projection for the matching displayed file, including clearing it for an empty list. Records targeting other file IDs are not displayed.
 - A missing associated presentation, a mismatched file ID, or a lost/replaced source pane returns false with a nonempty error rather than decorating an unrelated buffer. Validate association before clearing the previous projection.
@@ -37,7 +37,7 @@ Add `ReviewUi:show_comments(file_id, comments)` and `ReviewUi:clear_comments()` 
 
 ### 3. Project the agreed display semantics
 
-Implement virtual-line projection in `lua/diffreview/ui/comment_decorations.lua`, evaluating existing namespace/extmark usage in `lua/diffreview/ui/decorations.lua` for reuse of native patterns.
+Implement virtual-line projection in `lua/diffreview/ui/comments/decorations.lua`, evaluating existing namespace/extmark usage in `lua/diffreview/ui/decorations.lua` for reuse of native patterns.
 
 - Render open and stale comments; omit resolved comments. Preserve every body line, including blank lines, without inserting source-buffer text. Use existing highlight groups for comment text and stale emphasis; no new configuration or dependency is required.
 - Put line/range comment blocks below the original inclusive final line on their matching displayed side. Include enough visible context to distinguish a range and identify stale feedback's original coordinates. Preserve supplied order for blocks sharing an anchor.

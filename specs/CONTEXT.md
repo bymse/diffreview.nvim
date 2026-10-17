@@ -37,8 +37,8 @@ Excluded: lifecycle/controller wiring, persistence, new commands or key mappings
 - `lua/diffreview/ui/side_by_side.lua`: `display_side_by_side`, `cleanup`, and `clear`; chooses main/companion buffers, knows their actual source-side roles, and owns presentation transitions. Main is old for deleted files, current for normal source views, and neither for information views.
 - `lua/diffreview/ui/scratch_buffer.lua`: `snapshot` and `information`; instance-tagged, unlisted, no-swap virtual buffers. They are locked `nofile` projections, not writable editor buffers; evaluate ownership conventions without weakening their behavior.
 - `lua/diffreview/ui/decorations.lua`: added/deleted diff-line extmarks and namespace-wide clear. Comments need a separate namespace so clearing them cannot clear diff highlights.
-- `lua/diffreview/ui/comment_decorations.lua`: explicit caller-supplied comment projection, pane association validation, virtual-line rendering, and per-instance namespace cleanup; no collection or controller calls.
-- `lua/diffreview/ui/comment_editor.lua`: editor request/save types, explicit target validation, owned writable `acwrite` bottom split, synchronous save/delete handling, and native write/quit lifecycle. Reuses `comment_decorations.source_line_count` for actual displayed source bounds; never loads or mutates the comments collection.
+- `lua/diffreview/ui/comments/decorations.lua`: explicit caller-supplied comment projection, pane association validation, virtual-line rendering, and per-instance namespace cleanup; no collection or controller calls.
+- `lua/diffreview/ui/comments/editor.lua`: editor request/save types, explicit target validation, owned writable `acwrite` bottom split, synchronous save/delete handling, and native write/quit lifecycle. Reuses the comment decorations module's `source_line_count` for actual displayed source bounds; never loads or mutates the comments collection.
 - `lua/diffreview/ui/native_diff.lua`: window-local native diff setup and option restoration. Comment-editor splits must not join or disturb the two source windows' native diff state.
 - `lua/diffreview/ui/quickfix.lua`: native review file drawer and supplied file IDs. Reuse the public file-list UI for fixtures; add no comment-target lookup or bindings here.
 - `lua/diffreview/diff_view_model.lua`: `ChangedFileViewModel`, `DiffViewModel`, source/version/content types. `ChangedFileViewModel.id` is separate from `DiffViewModel`, which has no file ID.
@@ -53,15 +53,13 @@ Excluded: lifecycle/controller wiring, persistence, new commands or key mappings
 - `tests/integration/ui/comments/`: public facade projection, target/source-role, and ownership cleanup tests; local helpers inspect real source panes and virtual-line extmarks.
 - `tests/integration/ui/comments/editor_tests.lua`, `saving_tests.lua`, and `editor_lifecycle_tests.lua`: public open/write/close contracts, real path-backed source targeting, detached identities, save retries, source-window recovery, and draft ownership.
 - `tests/helpers/diff_view_model.lua`, `git_repo.lua`, and `ui_handlers.lua`: shared diff constructors, real temporary repositories, and required UI callbacks.
-- `tests/functional/review_tab_lifecycle_test.lua` and `tests/helpers/functional_review.lua`: native editor interactions, window/tab observations, and repository cleanup patterns. New comment flows call the UI facade directly because controller wiring is excluded.
-- `tests/functional/comment_tab_cleanup_test.lua`: native tab-close comment cleanup through the public UI facade with a notification-only handler and a real borrowed Git-backed buffer.
-- `tests/functional/comment_editor_write_test.lua` and `comment_editor_lifecycle_test.lua`: native write/write-quit failures and retries, ordinary/forced quit, fresh reopen after discard, and editor cleanup on native tab closure.
+- `tests/functional/review_tab_lifecycle_test.lua` and `tests/helpers/functional_review.lua`: native editor interactions through the plugin's public API, window/tab observations, and repository cleanup patterns. Comment functional coverage awaits public plugin API wiring.
 - `tests/unit/init.lua`, `tests/integration/init.lua`, and `tests/functional/init.lua`: explicit test-module registries; new modules must be registered.
 - `justfile`, `scripts/lint.lua`, and `tests/run.lua`: pinned Neovim runner, LuaLS, formatting, and test categories.
 
 ## Shared Verification Rules
 
-Follow applicable `AGENTS.md`: lowercase snake_case test names in the `method_should_expected_behavior_when_condition` pattern; no arrange/act/assert comments; real editor/Git fixtures; no replacement or interception of components, editor APIs, or notifications. Integration tests call module interfaces; key-driven and native user-command flows belong in functional tests. Inspect real buffers, window layout, extmarks, callback results, and modified flags instead of private state or exact incidental diagnostics.
+Follow applicable `AGENTS.md`: lowercase snake_case test names in the `method_should_expected_behavior_when_condition` pattern; no arrange/act/assert comments; real editor/Git fixtures; no replacement or interception of components, editor APIs, or notifications. Integration tests call module interfaces. Functional tests exercise interactions through the plugin's public API only; do not construct internal UI modules directly. Inspect real buffers, window layout, extmarks, callback results, and modified flags instead of private state or exact incidental diagnostics.
 
 Annotate every public Lua function, parameter, callback, and return value for LuaLS. Do not annotate primitive local variables unnecessarily. Keep test modules focused by behavior.
 
