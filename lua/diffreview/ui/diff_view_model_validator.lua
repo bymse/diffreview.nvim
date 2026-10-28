@@ -65,6 +65,9 @@ end
 ---@param diff DiffViewModel
 ---@return nil
 function M.validate(diff)
+  if type(diff.file_id) ~= 'string' or diff.file_id == '' then
+    validation_error('file_id must be a nonempty string')
+  end
   local operation = diff.operation
   if operation == 'error' then
     if diff.path == '' or diff.message == '' then

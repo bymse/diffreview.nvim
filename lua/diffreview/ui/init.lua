@@ -2,6 +2,10 @@ local quickfix = require('diffreview.ui.quickfix')
 local native_diff = require('diffreview.ui.native_diff')
 local side_by_side = require('diffreview.ui.side_by_side')
 local validator = require('diffreview.ui.diff_view_model_validator')
+local comment_decorations = require('diffreview.ui.comments.decorations')
+local comment_editor = require('diffreview.ui.comments.editor')
+local editor_request = require('diffreview.ui.comments.editor_request')
+local resource_registry = require('diffreview.ui.resource_registry')
 local M = {}
 
 ---@class ReviewSideBySideState
@@ -15,7 +19,13 @@ local M = {}
 ---@field active_layout ViewLayout|nil
 ---@field native_diff NativeDiffState
 
----@class ReviewUiHandlers
+---@alias ReviewCommentLookupHandler fun(target: ReviewCommentTarget): ReviewComment|nil, string|nil
+
+---@class ReviewCommentHandlers
+---@field on_comment_save ReviewCommentSaveHandler|nil
+---@field get_comment ReviewCommentLookupHandler|nil
+
+---@class ReviewUiHandlers: ReviewCommentHandlers
 ---@field on_file_selected fun(file_id: string): nil
 ---@field on_tab_closed fun(): nil
 
@@ -23,14 +33,34 @@ local M = {}
 ---@field instance_id integer
 ---@field tabpage integer|nil
 ---@field side_by_side ReviewSideBySideState
+---@field registry ReviewResourceRegistry
+---@field selected_diff DiffViewModel|nil
 ---@field quickfix_id quickfix_id|nil
 ---@field handlers ReviewUiHandlers|nil
 ---@field tab_closed_autocmd integer|nil
 ---@field tab_acquired boolean
+---@field comment_namespace integer
+---@field comment_buffers table<integer, boolean>
+---@field comment_editor ReviewCommentEditor|nil
 local ReviewUi = {}
 ReviewUi.__index = ReviewUi
 
 local next_instance_id = 0
+
+---@param self ReviewUi
+---@return nil
+local function invalidate_selected_diff(self)
+  self.selected_diff = nil
+  self:clear_comments()
+  for window, binding in pairs(self.registry:resources().windows) do
+    local display = binding.display
+    if display ~= nil and display.kind ~= 'editor' then
+      if not self.registry:bind_window(window, binding.buffer, nil) then
+        self.registry:remove_window(window)
+      end
+    end
+  end
+end
 
 ---@param self ReviewUi
 ---@return integer
@@ -46,6 +76,9 @@ local function acquire_tab(self)
           vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
           self.tab_closed_autocmd = nil
           self.tabpage = nil
+          invalidate_selected_diff(self)
+          comment_editor.cleanup(self)
+          side_by_side.cleanup(self.side_by_side, self.registry, self.instance_id)
           local handlers = self.handlers
           if handlers ~= nil then
             handlers.on_tab_closed()
@@ -136,7 +169,8 @@ end
 function ReviewUi:clear_selected_diff()
   local tab = assert(self.tabpage)
   present_in_review_tab(tab, function()
-    side_by_side.clear(self)
+    invalidate_selected_diff(self)
+    side_by_side.clear(self.side_by_side, self.registry, self.instance_id)
   end)
 end
 
@@ -158,11 +192,62 @@ function ReviewUi:display_diff_side_by_side(diff, layout, keep_drawer)
   end
   local tab = acquire_tab(self)
   present_in_review_tab(tab, function()
+    invalidate_selected_diff(self)
     if not keep_drawer then
       quickfix.close_drawer(self.quickfix_id, self.instance_id)
     end
-    side_by_side.display_side_by_side(self, diff, layout)
+    local ok, err =
+      pcall(side_by_side.display_side_by_side, self.side_by_side, self.registry, self.instance_id, diff, layout)
+    if not ok then
+      invalidate_selected_diff(self)
+      error(err, 0)
+    end
+    self.selected_diff = diff
   end)
+end
+
+---@param file_id string
+---@param comments ReviewComment[]
+---@return boolean, string|nil
+function ReviewUi:show_comments(file_id, comments)
+  return comment_decorations.show(self, file_id, comments)
+end
+
+---@return nil
+function ReviewUi:clear_comments()
+  comment_decorations.clear(self)
+end
+
+---@param buffer integer|nil Defaults to the current buffer; zero also denotes the current buffer.
+---@param line_start integer|nil Both endpoints omitted targets the originating source window's cursor line.
+---@param line_end integer|nil Inclusive source line endpoint; must accompany line_start.
+---@return integer|nil, string|nil
+function ReviewUi:open_comment_editor(buffer, line_start, line_end)
+  local context, err = editor_request.resolve(self, buffer, line_start, line_end)
+  if context == nil then
+    return nil, err
+  end
+  local reused = comment_editor.reuse(self, context.target)
+  if reused ~= nil then
+    return reused, nil
+  end
+  local prepared
+  prepared, err = editor_request.prepare(self, context)
+  if prepared == nil then
+    return nil, err
+  end
+  return comment_editor.open(self, prepared)
+end
+
+---@return boolean, string|nil
+function ReviewUi:write_comment_editor()
+  return comment_editor.write(self)
+end
+
+---@param force boolean|nil
+---@return boolean, string|nil
+function ReviewUi:close_comment_editor(force)
+  return comment_editor.close(self, force)
 end
 
 ---@param diff DiffViewModel
@@ -172,11 +257,17 @@ function ReviewUi:display_diff_inlinde(diff) end
 ---@return nil
 function ReviewUi:cleanup()
   self.handlers = nil
+  invalidate_selected_diff(self)
+  local previous_window = vim.api.nvim_get_current_win()
+  comment_editor.cleanup(self)
+  if vim.api.nvim_win_is_valid(previous_window) then
+    vim.api.nvim_set_current_win(previous_window)
+  end
   if self.tab_closed_autocmd ~= nil then
     vim.api.nvim_del_autocmd(self.tab_closed_autocmd)
     self.tab_closed_autocmd = nil
   end
-  local ok, err = pcall(side_by_side.cleanup, self)
+  local ok, err = pcall(side_by_side.cleanup, self.side_by_side, self.registry, self.instance_id)
   quickfix.cleanup(self.quickfix_id, self.instance_id)
   self.quickfix_id = nil
   local tab = self.tabpage
@@ -208,6 +299,9 @@ function M.get_ui(handlers)
   next_instance_id = next_instance_id + 1
   return setmetatable({
     instance_id = next_instance_id,
+    registry = resource_registry.new(),
+    comment_namespace = vim.api.nvim_create_namespace('diffreview.comments.' .. next_instance_id),
+    comment_buffers = {},
     tabpage = nil,
     tab_closed_autocmd = nil,
     tab_acquired = false,

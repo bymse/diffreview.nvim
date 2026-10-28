@@ -8,6 +8,13 @@ local M = {}
 
 local owner_variable = 'diffreview_side_by_side_owner'
 
+---@param window integer
+---@return boolean
+local function is_comment_editor(window)
+  local ok = pcall(vim.api.nvim_buf_get_var, vim.api.nvim_win_get_buf(window), 'diffreview_comment_editor_owner')
+  return ok
+end
+
 ---@param resource integer
 ---@param getter fun(integer, string): any
 ---@param instance_id integer
@@ -17,12 +24,27 @@ local function is_owned(resource, getter, instance_id)
   return ok and value == instance_id
 end
 
+---@param registry ReviewResourceRegistry
+---@param window integer
+---@param instance_id integer
+---@return nil
+local function track_window(registry, window, instance_id)
+  local buffer = vim.api.nvim_win_get_buf(window)
+  local owned = is_owned(buffer, vim.api.nvim_buf_get_var, instance_id)
+  local metadata = registry:resources().buffers[buffer] or { owned = owned, purpose = owned and 'diff' or 'source' }
+  assert(registry:register_buffer(buffer, metadata))
+  assert(registry:bind_window(window, buffer, nil))
+end
+
 ---@param state ReviewSideBySideState
 ---@param window integer|nil
 ---@param instance_id integer
 ---@return boolean
 local function has_owned_window(state, window, instance_id)
-  return window ~= nil and vim.api.nvim_win_is_valid(window) and is_owned(window, vim.api.nvim_win_get_var, instance_id)
+  return window ~= nil
+    and vim.api.nvim_win_is_valid(window)
+    and not is_comment_editor(window)
+    and is_owned(window, vim.api.nvim_win_get_var, instance_id)
 end
 
 ---@param state ReviewSideBySideState
@@ -47,37 +69,46 @@ local function clear_previous_presentation(state, instance_id, release_active, a
 end
 
 ---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
 ---@param instance_id integer
 ---@param layout ViewLayout
-local function ensure_review_window(state, instance_id, layout)
+local function ensure_review_window(state, registry, instance_id, layout)
   if not has_owned_window(state, state.main_window, instance_id) then
     if has_owned_window(state, state.companion_window, instance_id) then
       local split = layout == 'vertical' and 'right' or 'below'
       state.main_window = vim.api.nvim_open_win(0, true, { win = state.companion_window, split = split })
-    elseif state.main_window == nil then
+    elseif state.main_window == nil and not is_comment_editor(vim.api.nvim_get_current_win()) then
       local anchor = vim.api.nvim_get_current_win()
       state.main_window = anchor
     else
       local anchor = vim.api.nvim_get_current_win()
-      state.main_window = vim.api.nvim_open_win(0, true, { win = anchor, split = 'below' })
+      local split = is_comment_editor(anchor) and 'above' or 'below'
+      state.main_window = vim.api.nvim_open_win(0, true, { win = anchor, split = split })
     end
     vim.api.nvim_win_set_var(state.main_window, owner_variable, instance_id)
+    track_window(registry, state.main_window, instance_id)
   end
 end
 
 ---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
 ---@param instance_id integer
-local function dispose_companion(state, instance_id)
+local function dispose_companion(state, registry, instance_id)
   if has_owned_window(state, state.companion_window, instance_id) then
     vim.api.nvim_win_close(state.companion_window, false)
+  end
+  if state.companion_window ~= nil then
+    registry:remove_window(state.companion_window)
   end
   state.companion_window = nil
 end
 
 ---@param content DiffPathTextContent
+---@param registry ReviewResourceRegistry
 ---@return integer
-local function path_buffer(content)
+local function path_buffer(content, registry)
   local buffer = vim.fn.bufadd(content.absolute_path)
+  assert(registry:register_buffer(buffer, { owned = false, purpose = 'source' }))
   if not vim.api.nvim_buf_is_loaded(buffer) then
     vim.fn.bufload(buffer)
   end
@@ -87,15 +118,16 @@ end
 ---@param state ReviewSideBySideState
 ---@param content DiffFileContent
 ---@param instance_id integer
+---@param registry ReviewResourceRegistry
 ---@return integer
-local function main_content_buffer(state, content, instance_id)
+local function main_content_buffer(state, content, instance_id, registry)
   if content.kind == 'binary' then
     error('binary content cannot be rendered as text')
   end
   if content.source == 'path' then
-    return path_buffer(content)
+    return path_buffer(content, registry)
   end
-  local buffer = scratch_buffer.snapshot(instance_id, state.main_snapshot_buffer, 'main-snapshot', content)
+  local buffer = scratch_buffer.snapshot(instance_id, state.main_snapshot_buffer, 'main-snapshot', content, registry)
   state.main_snapshot_buffer = buffer
   return buffer
 end
@@ -103,22 +135,26 @@ end
 ---@param state ReviewSideBySideState
 ---@param content DiffSnapshotTextContent
 ---@param instance_id integer
+---@param registry ReviewResourceRegistry
 ---@return integer
-local function companion_content_buffer(state, content, instance_id)
-  local buffer = scratch_buffer.snapshot(instance_id, state.companion_snapshot_buffer, 'companion-snapshot', content)
+local function companion_content_buffer(state, content, instance_id, registry)
+  local buffer =
+    scratch_buffer.snapshot(instance_id, state.companion_snapshot_buffer, 'companion-snapshot', content, registry)
   state.companion_snapshot_buffer = buffer
   return buffer
 end
 
 ---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
 ---@param instance_id integer
 ---@param layout ViewLayout
 ---@return integer
-local function open_companion_window(state, instance_id, layout)
+local function open_companion_window(state, registry, instance_id, layout)
   local split = layout == 'vertical' and 'left' or 'above'
   local window = vim.api.nvim_open_win(0, false, { win = state.main_window, split = split })
   vim.api.nvim_win_set_var(window, owner_variable, instance_id)
   state.companion_window = window
+  track_window(registry, window, instance_id)
   return window
 end
 
@@ -136,13 +172,13 @@ local function is_reserved_two_window(diff)
     and diff.content_changed
 end
 
----@param ui ReviewUi
+---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
+---@param instance_id integer
 ---@param diff DiffViewModel
 ---@param layout ViewLayout
 ---@return nil
-function M.display_side_by_side(ui, diff, layout)
-  local state = ui.side_by_side
-  local instance_id = ui.instance_id
+function M.display_side_by_side(state, registry, instance_id, diff, layout)
   local will_use_two_windows = is_reserved_two_window(diff) and not has_binary_version(diff)
   local active_window_lost = state.native_diff.active
     and (
@@ -152,14 +188,15 @@ function M.display_side_by_side(ui, diff, layout)
   local release_active = not will_use_two_windows or active_window_lost
   local native_diff_transition = clear_previous_presentation(state, instance_id, release_active, active_window_lost)
   if not will_use_two_windows or (state.active_layout ~= nil and state.active_layout ~= layout) then
-    dispose_companion(state, instance_id)
+    dispose_companion(state, registry, instance_id)
   elseif not has_owned_window(state, state.companion_window, instance_id) then
     state.companion_window = nil
   end
-  ensure_review_window(state, instance_id, layout)
+  ensure_review_window(state, registry, instance_id, layout)
 
   local buffer
   local old_buffer
+  local main_side
   if
     diff.operation == 'error'
     or diff.operation == 'type_changed'
@@ -170,33 +207,40 @@ function M.display_side_by_side(ui, diff, layout)
       instance_id,
       state.information_buffer,
       'main-information',
-      diff_information.lines(diff)
+      diff_information.lines(diff),
+      registry
     )
     state.information_buffer = buffer
   elseif diff.operation == 'added' or diff.operation == 'untracked' then
-    buffer = main_content_buffer(state, diff.current.content, instance_id)
+    main_side = 'current'
+    buffer = main_content_buffer(state, diff.current.content, instance_id, registry)
   elseif diff.operation == 'deleted' then
-    buffer = main_content_buffer(state, diff.old.content, instance_id)
+    main_side = 'old'
+    buffer = main_content_buffer(state, diff.old.content, instance_id, registry)
   elseif diff.operation == 'unmerged' then
-    buffer = main_content_buffer(state, diff.current.content, instance_id)
+    main_side = 'current'
+    buffer = main_content_buffer(state, diff.current.content, instance_id, registry)
   else
-    buffer = main_content_buffer(state, diff.current.content, instance_id)
+    main_side = 'current'
+    buffer = main_content_buffer(state, diff.current.content, instance_id, registry)
     if will_use_two_windows then
       local old_content = diff.old.content
       ---@cast old_content DiffSnapshotTextContent
-      old_buffer = companion_content_buffer(state, old_content, instance_id)
+      old_buffer = companion_content_buffer(state, old_content, instance_id, registry)
     end
   end
 
   vim.api.nvim_win_set_buf(state.main_window, buffer)
+  assert(registry:bind_window(state.main_window, buffer, nil))
   statusline.set(state.main_window, diff)
   if old_buffer ~= nil then
     local companion = state.companion_window
     if not has_owned_window(state, companion, instance_id) then
-      companion = open_companion_window(state, instance_id, layout)
+      companion = open_companion_window(state, registry, instance_id, layout)
     end
     ---@cast companion integer
     vim.api.nvim_win_set_buf(companion, old_buffer)
+    assert(registry:bind_window(companion, old_buffer, nil))
     statusline.clear(companion)
     native_diff.enable(state.native_diff, { companion, state.main_window }, native_diff_transition)
   end
@@ -205,13 +249,26 @@ function M.display_side_by_side(ui, diff, layout)
   end
   state.active_layout = layout
   vim.api.nvim_set_current_win(state.main_window)
+  assert(registry:bind_window(state.main_window, buffer, {
+    file_id = diff.file_id,
+    kind = main_side and 'source' or 'information',
+    side = main_side,
+    primary = true,
+  }))
+  if old_buffer ~= nil then
+    assert(registry:bind_window(assert(state.companion_window), old_buffer, {
+      file_id = diff.file_id,
+      kind = 'source',
+      side = 'old',
+    }))
+  end
 end
 
----@param ui ReviewUi
+---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
+---@param instance_id integer
 ---@return nil
-function M.cleanup(ui)
-  local state = ui.side_by_side
-  local instance_id = ui.instance_id
+function M.cleanup(state, registry, instance_id)
   local active_window_lost = state.native_diff.active
     and (
       not has_owned_window(state, state.main_window, instance_id)
@@ -219,15 +276,26 @@ function M.cleanup(ui)
     )
   clear_previous_presentation(state, instance_id, true, active_window_lost)
 
-  for _, field in ipairs({ 'main_snapshot_buffer', 'companion_snapshot_buffer', 'information_buffer' }) do
-    local buffer = state[field]
+  local resources = registry:resources()
+  for buffer, metadata in pairs(resources.buffers) do
     if
-      buffer ~= nil
+      metadata.purpose == 'diff'
+      and metadata.owned
       and vim.api.nvim_buf_is_valid(buffer)
       and is_owned(buffer, vim.api.nvim_buf_get_var, instance_id)
     then
       vim.api.nvim_buf_delete(buffer, { force = true })
     end
+    if metadata.purpose == 'diff' or metadata.purpose == 'source' then
+      registry:remove_buffer(buffer)
+    end
+  end
+  for window in pairs(resources.windows) do
+    if is_owned(window, vim.api.nvim_win_get_var, instance_id) then
+      registry:remove_window(window)
+    end
+  end
+  for _, field in ipairs({ 'main_snapshot_buffer', 'companion_snapshot_buffer', 'information_buffer' }) do
     state[field] = nil
   end
 
@@ -237,24 +305,26 @@ function M.cleanup(ui)
   state.active_layout = nil
 end
 
----@param ui ReviewUi
+---@param state ReviewSideBySideState
+---@param registry ReviewResourceRegistry
+---@param instance_id integer
 ---@return nil
-function M.clear(ui)
-  local state = ui.side_by_side
+function M.clear(state, registry, instance_id)
   if state.main_window == nil then
     return
   end
   local main = state.main_window
   local companion = state.companion_window
-  M.cleanup(ui)
-  if has_owned_window(state, companion, ui.instance_id) then
+  M.cleanup(state, registry, instance_id)
+  if has_owned_window(state, companion, instance_id) then
     vim.api.nvim_win_close(assert(companion), false)
   end
-  if has_owned_window(state, main, ui.instance_id) then
-    local buffer = scratch_buffer.information(ui.instance_id, nil, 'main-information', {})
+  if has_owned_window(state, main, instance_id) then
+    local buffer = scratch_buffer.information(instance_id, nil, 'main-information', {}, registry)
     state.information_buffer = buffer
     state.main_window = main
     vim.api.nvim_win_set_buf(assert(main), buffer)
+    assert(registry:bind_window(assert(main), buffer, nil))
   end
 end
 
