@@ -8,6 +8,7 @@ M.display_side_by_side_should_render_path_backed_current_buffer_when_copied_cont
   vim.fn.writefile({ 'working tree' }, path)
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'copied',
     old = helpers.snapshot('source.txt', { 'old snapshot' }),
     current = helpers.path(path),

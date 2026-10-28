@@ -36,7 +36,7 @@ M.add_should_preserve_records_when_supplied_diff_content_is_invalid = function()
     { content = { kind = 'text' } },
     { content = { kind = 'text', source = 'path', absolute_path = '' } },
   }) do
-    reject({ operation = 'added', current = side })
+    reject({ file_id = 'file', operation = 'added', current = side })
   end
   for _, lines in ipairs({
     false,
@@ -48,7 +48,11 @@ M.add_should_preserve_records_when_supplied_diff_content_is_invalid = function()
     { extra = 'line' },
     { [1.5] = 'fraction' },
   }) do
-    reject({ operation = 'added', current = { content = { kind = 'text', source = 'snapshot', lines = lines } } })
+    reject({
+      file_id = 'file',
+      operation = 'added',
+      current = { content = { kind = 'text', source = 'snapshot', lines = lines } },
+    })
   end
 end
 
@@ -78,7 +82,9 @@ M.add_should_leave_records_unchanged_when_text_targets_or_ranges_are_invalid = f
   for _, side in ipairs({ '', 'new', 'OLD', false, 3, {} }) do
     reject({ file_id = 'file', side = side, text = 'text' })
   end
-  reject({ file_id = 'file', text = 'text' })
+  local whole = assert(review:add({ file_id = 'file', text = 'text' }, diff))
+  assert(vim.deep_equal(whole.target, { file_id = 'file' }))
+  before = assert(review:list())
   for _, range in ipairs({
     { line_start = 1 },
     { line_end = 1 },
@@ -104,6 +110,7 @@ M.add_should_enforce_side_availability_when_diff_operations_have_only_one_side =
   for _, operation in ipairs({ 'added', 'untracked', 'unmerged', 'deleted' }) do
     local review = comments.new()
     local diff = {
+      file_id = 'file',
       operation = operation,
       old = view_models.snapshot('file.txt', { 'old' }),
       current = view_models.snapshot('file.txt', { 'new' }),
@@ -133,7 +140,7 @@ M.add_should_accept_available_snapshots_when_targets_are_whole_file_or_in_bounds
     assert(line.target.line_start == 1 and line.target.line_end == 1)
     assert(range.target.line_start == 1 and range.target.line_end == 3)
   end
-  local blank = { operation = 'added', current = view_models.snapshot('blank.txt', { '' }) }
+  local blank = { file_id = 'blank', operation = 'added', current = view_models.snapshot('blank.txt', { '' }) }
   assert(review:add({ file_id = 'blank', side = 'current', text = 'empty line', line_start = 1, line_end = 1 }, blank))
 end
 
@@ -145,7 +152,11 @@ M.add_should_allow_only_whole_file_targets_when_content_is_binary_empty_or_path_
   }
   for _, content in ipairs(contents) do
     local review = comments.new()
-    local diff = { operation = 'added', current = { display_path = 'file.txt', mode = '100644', content = content } }
+    local diff = {
+      file_id = 'file',
+      operation = 'added',
+      current = { display_path = 'file.txt', mode = '100644', content = content },
+    }
     local record = assert(review:add({ file_id = 'file', side = 'current', text = 'whole' }, diff))
     local rejected, err =
       review:add({ file_id = 'file', side = 'current', text = 'line', line_start = 1, line_end = 1 }, diff)

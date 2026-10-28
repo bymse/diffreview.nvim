@@ -5,10 +5,12 @@ local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_render_type_information_when_file_type_changes = function()
   local review_ui = ui.get_ui(handlers)
-  review_ui:display_diff_side_by_side(
-    { operation = 'type_changed', old = helpers.binary('entry', '100644'), current = helpers.binary('entry', '120000') },
-    'vertical'
-  )
+  review_ui:display_diff_side_by_side({
+    file_id = 'file',
+    operation = 'type_changed',
+    old = helpers.binary('entry', '100644'),
+    current = helpers.binary('entry', '120000'),
+  }, 'vertical')
   assert(
     vim.deep_equal(helpers.lines(review_ui), {
       'Type change',
@@ -32,6 +34,7 @@ end
 M.display_side_by_side_should_emit_unavailable_binary_metadata_for_text_side = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('mixed.txt'),
     current = helpers.binary('mixed.txt', '100755'),
@@ -56,6 +59,7 @@ end
 M.display_side_by_side_should_not_emit_metadata_when_type_change_is_text_only = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'type_changed',
     old = helpers.snapshot('entry', { 'target' }, '100644'),
     current = helpers.snapshot('entry', { 'target' }, '120000'),
@@ -79,6 +83,7 @@ end
 M.display_side_by_side_should_emit_type_change_metadata_only_for_binary_side = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'type_changed',
     old = helpers.snapshot('entry', { 'target' }, '100644'),
     current = helpers.binary('entry', '120000'),
@@ -104,6 +109,7 @@ end
 M.display_side_by_side_should_render_unavailable_binary_fields_independently_when_metadata_is_missing = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'type_changed',
     old = { display_path = 'entry', mode = '100644', content = { kind = 'binary', size = 7 } },
     current = { display_path = 'entry', mode = '120000', content = { kind = 'binary', oid = 'cafe' } },

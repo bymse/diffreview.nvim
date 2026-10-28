@@ -44,16 +44,17 @@ end
 
 M.set_should_show_added_label_when_file_is_added_or_untracked = function()
   for _, operation in ipairs({ 'added', 'untracked' }) do
-    assert_changed_winbar({ operation = operation, current = snapshot('file.txt') }, 'Added file')
+    assert_changed_winbar({ file_id = 'file', operation = operation, current = snapshot('file.txt') }, 'Added file')
   end
 end
 
 M.set_should_show_deleted_label_when_file_is_deleted = function()
-  assert_changed_winbar({ operation = 'deleted', old = snapshot('file.txt') }, 'Deleted file')
+  assert_changed_winbar({ file_id = 'file', operation = 'deleted', old = snapshot('file.txt') }, 'Deleted file')
 end
 
 M.set_should_show_unmerged_label_when_file_is_unmerged = function()
   assert_changed_winbar({
+    file_id = 'file',
     operation = 'unmerged',
     current = {
       display_path = 'file.txt',
@@ -65,6 +66,7 @@ end
 
 M.set_should_show_mode_metadata_when_modified_mode_changes = function()
   assert_changed_winbar({
+    file_id = 'file',
     operation = 'modified',
     old = snapshot('file.txt', '100644'),
     current = snapshot('file.txt', '100755'),
@@ -74,6 +76,7 @@ end
 
 M.set_should_show_source_and_mode_metadata_when_file_is_renamed = function()
   assert_changed_winbar({
+    file_id = 'file',
     operation = 'renamed',
     old = snapshot('old.txt', '100644'),
     current = snapshot('new.txt', '100755'),
@@ -83,6 +86,7 @@ end
 
 M.set_should_show_source_when_file_is_copied = function()
   assert_changed_winbar({
+    file_id = 'file',
     operation = 'copied',
     old = snapshot('source.txt'),
     current = snapshot('copy.txt'),
@@ -92,6 +96,7 @@ end
 
 M.set_should_escape_percent_and_control_characters_when_path_contains_statusline_syntax = function()
   assert_changed_winbar({
+    file_id = 'file',
     operation = 'renamed',
     old = snapshot('old%\nname.txt'),
     current = snapshot('new.txt'),
@@ -101,19 +106,22 @@ end
 
 M.set_should_clear_winbar_when_diff_uses_information_view = function()
   local diffs = {
-    { operation = 'error', attempted_operation = 'modified', path = 'file.txt', message = 'failed' },
+    { file_id = 'file', operation = 'error', attempted_operation = 'modified', path = 'file.txt', message = 'failed' },
     {
+      file_id = 'file',
       operation = 'type_changed',
       old = snapshot('file.txt', '100644'),
       current = snapshot('file.txt', '120000'),
     },
     {
+      file_id = 'file',
       operation = 'modified',
       old = snapshot('file.txt'),
       current = binary('file.txt'),
       content_changed = true,
     },
     {
+      file_id = 'file',
       operation = 'modified',
       old = snapshot('file.txt', '100644'),
       current = snapshot('file.txt', '100755'),

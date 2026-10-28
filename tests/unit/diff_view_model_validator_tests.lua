@@ -34,21 +34,32 @@ M.validate_should_accept_every_valid_operation_shape = function()
   local current = version('current.lua', '100644', path_text())
   local old = version('old.lua')
   local diffs = {
-    { operation = 'added', current = current },
-    { operation = 'untracked', current = current },
-    { operation = 'deleted', old = old },
-    { operation = 'deleted', old = version('old.bin', nil, { kind = 'binary', oid = '1a2B', size = 0 }) },
-    { operation = 'deleted', old = version('old.bin', nil, { kind = 'binary' }) },
-    { operation = 'modified', old = old, current = current, content_changed = true },
-    { operation = 'renamed', old = old, current = current, content_changed = false },
-    { operation = 'copied', old = old, current = current, content_changed = false },
+    { file_id = 'file', operation = 'added', current = current },
+    { file_id = 'file', operation = 'untracked', current = current },
+    { file_id = 'file', operation = 'deleted', old = old },
     {
+      file_id = 'file',
+      operation = 'deleted',
+      old = version('old.bin', nil, { kind = 'binary', oid = '1a2B', size = 0 }),
+    },
+    { file_id = 'file', operation = 'deleted', old = version('old.bin', nil, { kind = 'binary' }) },
+    { file_id = 'file', operation = 'modified', old = old, current = current, content_changed = true },
+    { file_id = 'file', operation = 'renamed', old = old, current = current, content_changed = false },
+    { file_id = 'file', operation = 'copied', old = old, current = current, content_changed = false },
+    {
+      file_id = 'file',
       operation = 'type_changed',
       old = version('old.lua', '100644'),
       current = version('current-link', '120000', snapshot_text()),
     },
-    { operation = 'unmerged', current = current },
-    { operation = 'error', attempted_operation = 'modified', path = 'current.lua', message = 'could not load file' },
+    { file_id = 'file', operation = 'unmerged', current = current },
+    {
+      file_id = 'file',
+      operation = 'error',
+      attempted_operation = 'modified',
+      path = 'current.lua',
+      message = 'could not load file',
+    },
   }
 
   for _, diff in ipairs(diffs) do
@@ -58,6 +69,7 @@ end
 
 M.validate_should_accept_mode_only_modified_diff_when_content_is_unchanged = function()
   validator.validate({
+    file_id = 'file',
     operation = 'modified',
     old = version('file.lua', '100644'),
     current = version('file.lua', '100755', path_text()),
@@ -75,6 +87,7 @@ M.validate_should_accept_rename_and_copy_content_change_values_independent_of_mo
 
   for _, diff in ipairs(diffs) do
     validator.validate({
+      file_id = 'file',
       operation = diff.operation,
       old = version('old.lua', diff.old_mode),
       current = version('current.lua', diff.current_mode, path_text()),
@@ -84,37 +97,54 @@ M.validate_should_accept_rename_and_copy_content_change_values_independent_of_mo
 end
 
 M.validate_should_reject_unsupported_version_modes = function()
-  assert_invalid({ operation = 'added', current = version('current.lua', '000000', path_text()) })
-  assert_invalid({ operation = 'added', current = version('current.lua', '040000', path_text()) })
+  assert_invalid({ file_id = 'file', operation = 'added', current = version('current.lua', '000000', path_text()) })
+  assert_invalid({ file_id = 'file', operation = 'added', current = version('current.lua', '040000', path_text()) })
 end
 
 M.validate_should_reject_empty_display_paths = function()
-  assert_invalid({ operation = 'added', current = version('', nil, path_text()) })
+  assert_invalid({ file_id = 'file', operation = 'added', current = version('', nil, path_text()) })
 end
 
 M.validate_should_reject_nonabsolute_path_text = function()
-  assert_invalid({ operation = 'added', current = version('current.lua', nil, path_text('relative.lua')) })
+  assert_invalid({
+    file_id = 'file',
+    operation = 'added',
+    current = version('current.lua', nil, path_text('relative.lua')),
+  })
 end
 
 M.validate_should_reject_forbidden_old_or_symlink_path_text = function()
-  assert_invalid({ operation = 'deleted', old = version('old.lua', nil, path_text()) })
-  assert_invalid({ operation = 'added', current = version('link', '120000', path_text()) })
+  assert_invalid({ file_id = 'file', operation = 'deleted', old = version('old.lua', nil, path_text()) })
+  assert_invalid({ file_id = 'file', operation = 'added', current = version('link', '120000', path_text()) })
 end
 
 M.validate_should_reject_empty_snapshot_filetype_path = function()
   local invalid_filetype_path = snapshot_text()
   invalid_filetype_path.filetype_path = ''
-  assert_invalid({ operation = 'deleted', old = version('old.lua', nil, invalid_filetype_path) })
+  assert_invalid({ file_id = 'file', operation = 'deleted', old = version('old.lua', nil, invalid_filetype_path) })
 end
 
 M.validate_should_reject_invalid_binary_metadata = function()
-  assert_invalid({ operation = 'deleted', old = version('old.bin', nil, { kind = 'binary', oid = 'xyz', size = 1 }) })
-  assert_invalid({ operation = 'deleted', old = version('old.bin', nil, { kind = 'binary', oid = '', size = 1 }) })
-  assert_invalid({ operation = 'deleted', old = version('old.bin', nil, { kind = 'binary', size = -1 }) })
+  assert_invalid({
+    file_id = 'file',
+    operation = 'deleted',
+    old = version('old.bin', nil, { kind = 'binary', oid = 'xyz', size = 1 }),
+  })
+  assert_invalid({
+    file_id = 'file',
+    operation = 'deleted',
+    old = version('old.bin', nil, { kind = 'binary', oid = '', size = 1 }),
+  })
+  assert_invalid({
+    file_id = 'file',
+    operation = 'deleted',
+    old = version('old.bin', nil, { kind = 'binary', size = -1 }),
+  })
 end
 
 M.validate_should_reject_modified_noops = function()
   assert_invalid({
+    file_id = 'file',
     operation = 'modified',
     old = version('old.lua'),
     current = version('current.lua', nil, path_text()),
@@ -125,22 +155,29 @@ end
 M.validate_should_reject_equal_rename_or_copy_paths = function()
   local old = version('same.lua')
   local current = version('same.lua', nil, path_text())
-  assert_invalid({ operation = 'renamed', old = old, current = current, content_changed = false })
-  assert_invalid({ operation = 'copied', old = old, current = current, content_changed = true })
+  assert_invalid({ file_id = 'file', operation = 'renamed', old = old, current = current, content_changed = false })
+  assert_invalid({ file_id = 'file', operation = 'copied', old = old, current = current, content_changed = true })
 end
 
 M.validate_should_reject_invalid_type_change_and_unmerged_fields = function()
   assert_invalid({
+    file_id = 'file',
     operation = 'type_changed',
     old = version('old.lua'),
     current = version('current.lua', '100755', path_text()),
   })
-  assert_invalid({ operation = 'unmerged', current = version('current.lua') })
+  assert_invalid({ file_id = 'file', operation = 'unmerged', current = version('current.lua') })
 end
 
 M.validate_should_reject_empty_error_fields = function()
-  assert_invalid({ operation = 'error', attempted_operation = 'added', path = '', message = 'failed' })
-  assert_invalid({ operation = 'error', attempted_operation = 'added', path = 'file.lua', message = '' })
+  assert_invalid({ file_id = 'file', operation = 'error', attempted_operation = 'added', path = '', message = 'failed' })
+  assert_invalid({
+    file_id = 'file',
+    operation = 'error',
+    attempted_operation = 'added',
+    path = 'file.lua',
+    message = '',
+  })
 end
 
 return M

@@ -5,10 +5,13 @@ local handlers = require('helpers.ui_handlers')
 
 M.display_side_by_side_should_preserve_empty_error_lines_when_content_load_fails = function()
   local review_ui = ui.get_ui(handlers)
-  review_ui:display_diff_side_by_side(
-    { operation = 'error', attempted_operation = 'untracked', path = 'bad%\nname', message = 'first\n\nthird' },
-    'vertical'
-  )
+  review_ui:display_diff_side_by_side({
+    file_id = 'file',
+    operation = 'error',
+    attempted_operation = 'untracked',
+    path = 'bad%\nname',
+    message = 'first\n\nthird',
+  }, 'vertical')
   assert(
     vim.deep_equal(helpers.lines(review_ui), {
       'Content load error',

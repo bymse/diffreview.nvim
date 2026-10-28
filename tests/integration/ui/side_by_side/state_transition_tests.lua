@@ -6,6 +6,7 @@ local handlers = require('helpers.ui_handlers')
 
 local function modified_diff()
   return {
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('file.txt', { 'old' }),
     current = helpers.snapshot('file.txt', { 'current' }),
@@ -35,6 +36,7 @@ M.display_side_by_side_should_restore_captured_window_options_when_leaving_two_w
   end
   local diffopt = vim.o.diffopt
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'added',
     current = helpers.snapshot('added.txt', { 'added' }),
   }, 'vertical')
@@ -99,6 +101,7 @@ M.display_side_by_side_should_clear_diff_decorations_when_rendering_information 
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   local old_buffer = vim.api.nvim_win_get_buf(review_ui.side_by_side.companion_window)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('file.txt', { 'same' }, '100644'),
     current = helpers.snapshot('file.txt', { 'same' }, '100755'),
@@ -123,11 +126,12 @@ M.display_side_by_side_should_reconcile_layout_and_one_window_transitions = func
   assert(review_ui.side_by_side.companion_window ~= vertical_companion, 'expected companion replacement for layout')
   assert(#vim.api.nvim_tabpage_list_wins(tab) == 2, 'expected two windows after layout change')
   review_ui:display_diff_side_by_side(
-    { operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
+    { file_id = 'file', operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
     'vertical'
   )
   assert(#vim.api.nvim_tabpage_list_wins(tab) == 1, 'expected decorated one-window transition')
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('file.txt', { 'same' }, '100644'),
     current = helpers.snapshot('file.txt', { 'same' }, '100755'),
@@ -150,9 +154,15 @@ M.display_side_by_side_should_preserve_module_owned_scrollopt_until_last_instanc
   first:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(vim.tbl_contains(vim.split(vim.o.scrollopt, ',', { plain = true }), 'hor'), 'expected owned hor re-add')
   second:display_diff_side_by_side(modified_diff(), 'vertical')
-  first:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('first.txt') }, 'vertical')
+  first:display_diff_side_by_side(
+    { file_id = 'file', operation = 'added', current = helpers.snapshot('first.txt') },
+    'vertical'
+  )
   assert(vim.tbl_contains(vim.split(vim.o.scrollopt, ',', { plain = true }), 'hor'), 'expected hor while second active')
-  second:display_diff_side_by_side({ operation = 'added', current = helpers.snapshot('second.txt') }, 'vertical')
+  second:display_diff_side_by_side(
+    { file_id = 'file', operation = 'added', current = helpers.snapshot('second.txt') },
+    'vertical'
+  )
   assert(vim.o.scrollopt == 'ver,jump', 'expected owned hor removal')
   helpers.cleanup(first)
   helpers.cleanup(second)
@@ -178,7 +188,7 @@ M.display_side_by_side_should_preserve_preexisting_scrollopt_hor_across_two_wind
   review_ui:display_diff_side_by_side(modified_diff(), 'vertical')
   assert(vim.o.scrollopt == 'ver,jump,hor', 'expected pre-existing hor after two-window rendering')
   review_ui:display_diff_side_by_side(
-    { operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
+    { file_id = 'file', operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
     'vertical'
   )
   assert(vim.o.scrollopt == 'ver,jump,hor', 'expected pre-existing hor after one-window transition')
@@ -197,6 +207,7 @@ M.cleanup_should_release_owned_resources_and_restore_native_diff_when_active = f
   vim.o.scrollopt = 'ver,jump'
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'error',
     attempted_operation = 'modified',
     path = 'error.txt',
@@ -256,7 +267,10 @@ M.cleanup_should_preserve_borrowed_path_buffer_when_it_is_decorated = function()
   local path = vim.fn.tempname() .. '.txt'
   vim.fn.writefile({ 'borrowed' }, path)
   local review_ui = ui.get_ui(handlers)
-  review_ui:display_diff_side_by_side({ operation = 'added', current = helpers.path(path) }, 'vertical')
+  review_ui:display_diff_side_by_side(
+    { file_id = 'file', operation = 'added', current = helpers.path(path) },
+    'vertical'
+  )
   local buffer = helpers.main_buffer(review_ui)
   local namespace = review_ui.side_by_side.namespace
   assert(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, {}) == 1, 'expected decoration')
@@ -320,7 +334,7 @@ M.display_side_by_side_should_preserve_unrelated_user_tab_across_two_window_tran
     'expected unchanged user tab after two-window rendering'
   )
   review_ui:display_diff_side_by_side(
-    { operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
+    { file_id = 'file', operation = 'added', current = helpers.snapshot('added.txt', { 'added' }) },
     'vertical'
   )
   assert(

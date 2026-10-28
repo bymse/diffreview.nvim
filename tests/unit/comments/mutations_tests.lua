@@ -5,7 +5,7 @@ local M = {}
 M.add_should_preserve_order_and_identity_when_comments_are_edited_and_deleted = function()
   local review = comments.new()
   local diff = view_models.modified({ 'one', 'two', 'three' }, { 'one', 'changed', 'three' })
-  local added = { operation = 'added', current = view_models.snapshot('b.txt', { 'b' }) }
+  local added = { file_id = 'new:b', operation = 'added', current = view_models.snapshot('b.txt', { 'b' }) }
   assert(vim.deep_equal(assert(review:list()), {}))
   local first, err = review:add({ file_id = 'opaque:a', side = 'old', text = ' whole file ' }, diff)
   assert(first and err == nil and first.state == 'open' and type(first.id) == 'string' and first.id ~= '')

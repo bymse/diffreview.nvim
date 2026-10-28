@@ -1,6 +1,7 @@
 return {
   'unit.comments.mutations_tests',
   'unit.comments.validation_tests',
+  'unit.comments.file_targets_tests',
   'unit.comments.isolation_tests',
   'unit.comments.resolution_tests',
   'unit.config_normalize_tests',

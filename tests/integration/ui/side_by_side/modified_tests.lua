@@ -6,6 +6,7 @@ local handlers = require('helpers.ui_handlers')
 M.display_side_by_side_should_render_mode_information_when_modified_content_is_unchanged = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('script.sh', { 'run' }, '100644'),
     current = helpers.snapshot('script.sh', { 'run' }, '100755'),
@@ -28,6 +29,7 @@ end
 M.display_side_by_side_should_render_old_left_of_current_when_modified_content_changes = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('a.txt', { 'old' }),
     current = helpers.snapshot('a.txt', { 'current' }),
@@ -51,6 +53,7 @@ end
 M.display_side_by_side_should_render_old_above_current_when_modified_layout_is_horizontal = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'modified',
     old = helpers.snapshot('a.txt', { 'old' }),
     current = helpers.snapshot('a.txt', { 'current' }),

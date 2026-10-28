@@ -45,6 +45,7 @@ end
 ---@return ModifiedDiff
 function M.modified(old_lines, current_lines)
   return {
+    file_id = 'file',
     operation = 'modified',
     old = M.snapshot('file.txt', old_lines),
     current = M.snapshot('file.txt', current_lines),

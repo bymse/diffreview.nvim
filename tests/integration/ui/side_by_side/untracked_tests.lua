@@ -6,7 +6,7 @@ local handlers = require('helpers.ui_handlers')
 M.display_side_by_side_should_not_decorate_empty_untracked_snapshot = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
-    { operation = 'untracked', current = helpers.snapshot('empty.txt', {}) },
+    { file_id = 'file', operation = 'untracked', current = helpers.snapshot('empty.txt', {}) },
     'vertical'
   )
   local buffer = helpers.main_buffer(review_ui)

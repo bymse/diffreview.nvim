@@ -6,6 +6,7 @@ local handlers = require('helpers.ui_handlers')
 M.display_side_by_side_should_render_two_windows_when_renamed_content_changes = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side({
+    file_id = 'file',
     operation = 'renamed',
     old = helpers.snapshot('old.txt', { 'old' }, '100644'),
     current = helpers.snapshot('new.txt', { 'new' }, '100755'),

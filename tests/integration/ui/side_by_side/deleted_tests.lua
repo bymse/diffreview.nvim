@@ -6,7 +6,7 @@ local handlers = require('helpers.ui_handlers')
 M.display_side_by_side_should_render_deleted_snapshot_when_file_is_removed = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
-    { operation = 'deleted', old = helpers.snapshot('deleted.txt', { 'gone' }) },
+    { file_id = 'file', operation = 'deleted', old = helpers.snapshot('deleted.txt', { 'gone' }) },
     'vertical'
   )
   assert(vim.deep_equal(helpers.lines(review_ui), { 'gone' }), 'expected deleted content')
@@ -31,7 +31,7 @@ end
 M.display_side_by_side_should_restore_read_only_snapshot_options_when_reusing_buffer = function()
   local review_ui = ui.get_ui(handlers)
   review_ui:display_diff_side_by_side(
-    { operation = 'deleted', old = helpers.snapshot('unknown.no_match', {}) },
+    { file_id = 'file', operation = 'deleted', old = helpers.snapshot('unknown.no_match', {}) },
     'vertical'
   )
   local buffer = helpers.main_buffer(review_ui)
