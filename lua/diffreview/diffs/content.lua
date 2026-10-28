@@ -26,12 +26,13 @@ local function get_operation(entry)
   return assert(operations[entry.git_diff.status])
 end
 
+---@param file_id string
 ---@param operation DiffOperation
 ---@param path string
 ---@param message string
 ---@return ErrorDiff
-local function error_view(operation, path, message)
-  return { operation = 'error', attempted_operation = operation, path = path, message = message }
+local function error_view(file_id, operation, path, message)
+  return { file_id = file_id, operation = 'error', attempted_operation = operation, path = path, message = message }
 end
 
 ---@param bytes string
@@ -226,15 +227,19 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
     return nil
   end
   local operation_name = get_operation(entry)
+  local file_id = entry.summary.id
   local display_path = entry.summary.display_path
   local diff = entry.git_diff
   if diff == nil then
     local current, bytes, read_error, mode =
       load_worktree(entry, assert(entry.untracked_path), nil, operation, snapshot_worktree)
     if current == nil then
-      return read_error and error_view(operation_name, display_path, read_error) or nil
+      return read_error and error_view(file_id, operation_name, display_path, read_error) or nil
     end
-    return { operation = 'untracked', current = current }, { bytes = assert(bytes), mode = assert(mode) }
+    return { file_id = file_id, operation = 'untracked', current = current }, {
+      bytes = assert(bytes),
+      mode = assert(mode),
+    }
   end
 
   local old, old_bytes
@@ -243,11 +248,11 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
     old, old_bytes, read_error =
       load_blob(repo, entry, diff.old_path or diff.current_path, diff.old_mode, diff.old_oid, operation)
     if old == nil then
-      return read_error and error_view(operation_name, display_path, read_error) or nil
+      return read_error and error_view(file_id, operation_name, display_path, read_error) or nil
     end
   end
   if operation_name == 'deleted' then
-    return { operation = operation_name, old = assert(old) }
+    return { file_id = file_id, operation = operation_name, old = assert(old) }
   end
 
   local current, current_bytes, read_error, worktree_mode
@@ -259,19 +264,26 @@ function M.load(repo, target_is_worktree, entry, operation, snapshot_worktree)
       load_blob(repo, entry, diff.current_path, diff.new_mode, diff.new_oid, operation)
   end
   if current == nil then
-    return read_error and error_view(operation_name, display_path, read_error) or nil
+    return read_error and error_view(file_id, operation_name, display_path, read_error) or nil
   end
   local snapshot = worktree_mode and { bytes = assert(current_bytes), mode = worktree_mode } or nil
   if operation_name == 'added' or operation_name == 'unmerged' then
-    return { operation = operation_name, current = current }, snapshot
+    return { file_id = file_id, operation = operation_name, current = current }, snapshot
   end
 
   old = assert(old)
   local content_changed = old_bytes ~= current_bytes
   if operation_name == 'modified' and not content_changed and old.mode == current.mode then
-    return error_view(operation_name, display_path, 'Selected file no longer differs from its baseline')
+    return error_view(file_id, operation_name, display_path, 'Selected file no longer differs from its baseline')
   end
-  return { operation = operation_name, old = old, current = current, content_changed = content_changed }, snapshot
+  return {
+    file_id = file_id,
+    operation = operation_name,
+    old = old,
+    current = current,
+    content_changed = content_changed,
+  },
+    snapshot
 end
 
 return M

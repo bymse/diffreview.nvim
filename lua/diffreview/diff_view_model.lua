@@ -33,43 +33,51 @@ local M = {}
 ---@field content DiffFileContent
 
 ---@class AddedDiff
+---@field file_id string
 ---@field operation 'added'|'untracked'
 ---@field current DiffFileVersion
 
 ---@class DeletedDiff
+---@field file_id string
 ---@field operation 'deleted'
 ---@field old DiffFileVersion
 
 ---@class ModifiedDiff
+---@field file_id string
 ---@field operation 'modified'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
 ---@class RenamedDiff
+---@field file_id string
 ---@field operation 'renamed'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
 ---@class CopiedDiff
+---@field file_id string
 ---@field operation 'copied'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 ---@field content_changed boolean
 
 ---@class TypeChangedDiff
+---@field file_id string
 ---@field operation 'type_changed'
 ---@field old DiffFileVersion
 ---@field current DiffFileVersion
 
 ---@class UnmergedDiff
+---@field file_id string
 ---@field operation 'unmerged'
 ---@field current DiffFileVersion
 
 ---@alias DiffOperation 'added'|'untracked'|'deleted'|'modified'|'renamed'|'copied'|'type_changed'|'unmerged'
 
 ---@class ErrorDiff
+---@field file_id string
 ---@field operation 'error'
 ---@field attempted_operation DiffOperation
 ---@field path string

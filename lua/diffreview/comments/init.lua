@@ -3,14 +3,14 @@
 
 ---@class ReviewCommentInput
 ---@field file_id string
----@field side ReviewCommentSide
+---@field side ReviewCommentSide|nil Omitted only for whole-file targets (both endpoints absent).
 ---@field text string
 ---@field line_start integer|nil
 ---@field line_end integer|nil
 
 ---@class ReviewCommentTarget
 ---@field file_id string
----@field side ReviewCommentSide
+---@field side ReviewCommentSide|nil Omitted only for whole-file targets (both endpoints absent).
 ---@field line_start integer|nil
 ---@field line_end integer|nil
 
@@ -113,6 +113,7 @@ function M.new()
 end
 
 ---The caller supplies the current diff for input.file_id; line ranges require snapshot text.
+---Whole-file targets may omit the side; line ranges require an explicit side.
 ---@param input ReviewCommentInput
 ---@param diff DiffViewModel
 ---@return ReviewComment|nil, string|nil
@@ -120,14 +121,20 @@ function ReviewCommentCollection:add(input, diff)
   if type(input) ~= 'table' or not valid_text(input.text) then
     return nil, 'Expected nonblank comment text'
   end
-  if not nonempty_string(input.file_id) or (input.side ~= 'old' and input.side ~= 'current') then
-    return nil, 'Expected a file ID and old or current side'
+  if not nonempty_string(input.file_id) or (input.side ~= nil and input.side ~= 'old' and input.side ~= 'current') then
+    return nil, 'Expected a file ID and an optional old or current side'
   end
-  local side, side_error = validate_side(diff, input.side)
+  local first, last = input.line_start, input.line_end
+  if input.side == nil and (first ~= nil or last ~= nil) then
+    return nil, 'Comment ranges require an old or current side'
+  end
+  local side, side_error = validate_side(diff, input.side or 'current')
+  if input.side == nil and side == nil then
+    side, side_error = validate_side(diff, 'old')
+  end
   if side == nil then
     return nil, side_error
   end
-  local first, last = input.line_start, input.line_end
   if first ~= nil or last ~= nil then
     if not positive_integer(first) or not positive_integer(last) then
       return nil, 'Expected both range endpoints as positive finite integers'
@@ -141,7 +148,7 @@ function ReviewCommentCollection:add(input, diff)
       return nil, 'Comment range is outside the text snapshot'
     end
   end
-  local id = vim.fn.sha256(vim.json.encode({ input.file_id, input.side, first or 0, last or 0 }))
+  local id = vim.fn.sha256(vim.json.encode({ input.file_id, input.side or vim.NIL, first or 0, last or 0 }))
   if self:find_index(id) ~= nil then
     return nil, 'A comment already exists for this target'
   end
